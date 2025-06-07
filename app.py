@@ -29,7 +29,7 @@ df = None
 num_columns = 0
 total_rows = 0
 odr_starts = []
-start_colors = []  # Renamed for consistency
+start_colors = []
 odr_models = []
 odr_true_false = []
 locations_low = []
@@ -92,7 +92,7 @@ def load_excel_file():
     high_level_hits = sorted(df["High Level Hit"].unique())
     colors_high = sorted(df["High color"].unique())
     low_level_hits = sorted(df["Low Level Hit"].unique())
-    logger.debug(f"Loaded dropdowns: low_level_hits={low_level_hits}, high_level_hits={high_level_hits}")
+    logger.debug(f"Loaded dropdowns: low_level_hits={low_level_hits}, high_level_hits={high_level_hits}, total_rows={total_rows}")
 
 # Initial load of the Excel file
 try:
@@ -102,6 +102,7 @@ except Exception as e:
 
 def calculate_scenario_probability(odr_start, start_color, color, odr_model, odr_true_false, location_high, high_level_hit, color_high, location_low, low_level_hit):
     if df is None or total_rows == 0:
+        logger.warning("No data available for probability calculation")
         return 0, 0.0
     
     filtered_df = df.copy()
@@ -129,11 +130,12 @@ def calculate_scenario_probability(odr_start, start_color, color, odr_model, odr
     
     matching_rows = len(filtered_df)
     probability = matching_rows / total_rows if total_rows > 0 else 0
-    logger.debug(f"Scenario probability: matching_rows={matching_rows}, probability={probability}")
+    logger.debug(f"Scenario probability: matching_rows={matching_rows}, probability={probability}, filters={{odr_start={odr_start}, low_level_hit={low_level_hit}, high_level_hit={high_level_hit}}}")
     return matching_rows, probability
 
 def calculate_target_probabilities(odr_start, start_color, color, odr_model, odr_true_false, location_high, high_level_hit, color_high, location_low, low_level_hit):
     if df is None or total_rows == 0:
+        logger.warning("No data available for target probabilities")
         return ["No data available"]
     
     filtered_df = df.copy()
@@ -159,25 +161,38 @@ def calculate_target_probabilities(odr_start, start_color, color, odr_model, odr
     if color != "Any":
         filtered_df = filtered_df[filtered_df["Low color"] == color]
     
-    logger.debug(f"Filtered rows: {len(filtered_df)}")
+    logger.debug(f"Filtered rows: {len(filtered_df)}, filters={{odr_start={odr_start}, low_level_hit={low_level_hit}, high_level_hit={high_level_hit}}}")
     
-    target_counts = {target: 0 for target in TARGETS}
+    target_counts = {}
+    for target in TARGETS:
+        target_counts[target] = 0
+    
+    unique_high = filtered_df["High Level Hit"].unique().tolist()
+    unique_low = filtered_df["Low Level Hit"].unique().tolist()
+    logger.debug(f"Unique High Level Hit: {unique_high}, Unique Low Level Hit: {unique_low}")
     
     for _, row in filtered_df.iterrows():
-        high_level = str(row["High Level Hit"]).strip()
-        low_level = str(row["Low Level Hit"]).strip()
+        high_level = row["High Level Hit"]
+        low_level = row["Low Level Hit"]
         if high_level in LEVEL_HIERARCHY:
             target_counts[high_level] += 1
+        else:
+            logger.debug(f"High Level Hit '{high_level}' not in LEVEL_HIERARCHY")
         if low_level in LEVEL_HIERARCHY:
             target_counts[low_level] += 1
+        else:
+            logger.debug(f"Low Level Hit '{low_level}' not in LEVEL_HIERARCHY")
     
     total_count = sum(target_counts.values())
     output_lines = []
+    output_lines.append(f"Filtered Rows: {len(filtered_df)}")
+    output_lines.append(f"Total Target Counts: {total_count}")
+    
     if total_count > 0:
         for target in TARGETS:
             count = target_counts[target]
+            percentage = (count / total_count) * 100
             if count > 0:
-                percentage = (count / total_count) * 100
                 output_lines.append(f"{target}: {count} time{'s' if count != 1 else ''}, {percentage:.1f}%")
     else:
         output_lines.append("No matching targets found")
@@ -305,8 +320,8 @@ def index():
         low_level_hit2 = request.form.get("low_level_hit2", "Any")
         color2 = request.form.get("color2", "Any")
 
-        logger.debug(f"Scenario 1 inputs: {locals()}")
-        logger.debug(f"Scenario 2 inputs: {locals()}")
+        logger.debug(f"Scenario 1 inputs: odr_start1={odr_start1}, low_level_hit1={low_level_hit1}, high_level_hit1={high_level_hit1}")
+        logger.debug(f"Scenario 2 inputs: odr_start2={odr_start2}, low_level_hit2={low_level_hit2}, high_level_hit2={high_level_hit2}")
 
         # Calculate probabilities
         matching_rows1, prob1 = calculate_scenario_probability(
@@ -346,6 +361,7 @@ def index():
             "=" * 100
         ]
         output.extend(f"{line1:<50} {line2:>50}" for line1, line2 in zip(scenario1_lines, scenario2_lines))
+        logger.debug(f"Final output: {output}")
 
         return render_template(
             "index.html",
