@@ -33,7 +33,7 @@
     <p class="success">{{ success }}</p>
     {% endif %}
     <!-- Scenario Comparison Form -->
-    <form method="POST">
+    <form method="POST" action="/">
         <div class="container">
             <!-- Scenario 1 -->
             <div class="scenario">
@@ -42,62 +42,62 @@
                 <label>Odr start:</label>
                 <select name="odr_start1">
                     {% for option in odr_starts %}
-                    <option value="{{ option }}">{{ option }}</option>
+                    <option value="{{ option }}" {% if selected_odr_start1 == option %}selected{% endif %}>{{ option }}</option>
                     {% endfor %}
                 </select><br>
                 <label>Start color:</label>
                 <select name="start_color1">
                     {% for option in start_colors %}
-                    <option value="{{ option }}">{{ option }}</option>
+                    <option value="{{ option }}" {% if selected_start_color1 == option %}selected{% endif %}>{{ option }}</option>
                     {% endfor %}
                 </select><br>
                 {% endif %}
                 <label>ODR Model:</label>
                 <select name="odr_model1">
                     {% for option in odr_models %}
-                    <option value="{{ option }}">{{ option }}</option>
+                    <option value="{{ option }}" {% if selected_odr_model1 == option %}selected{% endif %}>{{ option }}</option>
                     {% endfor %}
                 </select><br>
                 <label>ODR True/False:</label>
                 <select name="odr_true_false1">
                     {% for option in odr_true_false %}
-                    <option value="{{ option }}">{{ option }}</option>
+                    <option value="{{ option }}" {% if selected_odr_true_false1 == option %}selected{% endif %}>{{ option }}</option>
                     {% endfor %}
                 </select><br>
                 <label>Location of High:</label>
                 <select name="location_high1">
                     {% for option in locations_high %}
-                    <option value="{{ option }}">{{ option }}</option>
+                    <option value="{{ option }}" {% if selected_location_high1 == option %}selected{% endif %}>{{ option }}</option>
                     {% endfor %}
                 </select><br>
                 <label>High Level Hit:</label>
                 <select name="high_level_hit1">
                     {% for option in high_level_hits %}
-                    <option value="{{ option }}">{{ option }}</option>
+                    <option value="{{ option }}" {% if selected_high_level_hit1 == option %}selected{% endif %}>{{ option }}</option>
                     {% endfor %}
                 </select><br>
                 <label>High Color:</label>
                 <select name="color_high1">
                     {% for option in colors_high %}
-                    <option value="{{ option }}">{{ option }}</option>
+                    <option value="{{ option }}" {% if selected_color_high1 == option %}selected{% endif %}>{{ option }}</option>
                     {% endfor %}
                 </select><br>
                 <label>Location of Low:</label>
                 <select name="location_low1">
                     {% for option in locations_low %}
-                    <option value="{{ option }}">{{ option }}</option>
+                    <option value="{{ option }}" {% if selected_location_low1 == option %}selected{% endif %}>{{ option }}</option>
                     {% endfor %}
                 </select><br>
                 <label>Low Level Hit:</label>
                 <select name="low_level_hit1">
                     {% for option in low_level_hits %}
-                    <option value="{{ option }}">{{ option }}</option>
+                    <option value="{{ option }}" {% if selected_low_level_hit1 == option %}selected{% endif %}>{{ option }}</option>
                     {% endfor %}
                 </select><br>
                 <label>Low Color:</label>
                 <select name="color1">
                     {% for option in colors %}
-                    <option value="{{ option }}">{{ option }}</option>
+                    <option value="{{ option }}" {% if selected_color1 == option %}selected{% endif %}>{{ option }}</option>
                     {% endfor %}
                 </select><br>
             </div>
@@ -108,62 +108,62 @@
                 <label>Odr start:</label>
                 <select name="odr_start2">
                     {% for option in odr_starts %}
-                    <option value="{{ option }}">{{ option }}</option>
+                    <option value="{{ option }}" {% if selected_odr_start2 == option %}selected{% endif %}>{{ option }}</option>
                     {% endfor %}
                 </select><br>
                 <label>Start color:</label>
                 <select name="start_color2">
                     {% for option in start_colors %}
-                    <option value="{{ option }}">{{ option }}</option>
+                    <option value="{{ option }}" {% if selected_start_color2 == option %}selected{% endif %}>{{ option }}</option>
                     {% endfor %}
                 </select><br>
                 {% endif %}
                 <label>ODR Model:</label>
                 <select name="odr_model2">
                     {% for option in odr_models %}
-                    <option value="{{ option }}">{{ option }}</option>
+                    <option value="{{ option }}" {% if selected_odr_model2 == option %}selected{% endif %}>{{ option }}</option>
                     {% endfor %}
                 </select><br>
                 <label>ODR True/False:</label>
                 <select name="odr_true_false2">
                     {% for option in odr_true_false %}
-                    <option value="{{ option }}">{{ option }}</option>
+                    <option value="{{ option }}" {% if selected_odr_true_false2 == option %}selected{% endif %}>{{ option }}</option>
                     {% endfor %}
                 </select><br>
                 <label>Location of High:</label>
                 <select name="location_high2">
                     {% for option in locations_high %}
-                    <option value="{{ option }}">{{ option }}</option>
+                    <option value="{{ option }}" {% if selected_location_high2 == option %}selected{% endif %}>{{ option }}</option>
                     {% endfor %}
                 </select><br>
                 <label>High Level Hit:</label>
                 <select name="high_level_hit2">
                     {% for option in high_level_hits %}
-                    <option value="{{ option }}">{{ option }}</option>
+                    <option value="{{ option }}" {% if selected_high_level_hit2 == option %}selected{% endif %}>{{ option }}</option>
                     {% endfor %}
                 </select><br>
                 <label>High Color:</label>
                 <select name="color_high2">
                     {% for option in colors_high %}
-                    <option value="{{ option }}">{{ option }}</option>
+                    <option value="{{ option }}" {% if selected_color_high2 == option %}selected{% endif %}>{{ option }}</option>
                     {% endfor %}
                 </select><br>
                 <label>Location of Low:</label>
                 <select name="location_low2">
                     {% for option in locations_low %}
-                    <option value="{{ option }}">{{ option }}</option>
+                    <option value="{{ option }}" {% if selected_location_low2 == option %}selected{% endif %}>{{ option }}</option>
                     {% endfor %}
                 </select><br>
                 <label>Low Level Hit:</label>
                 <select name="low_level_hit2">
                     {% for option in low_level_hits %}
-                    <option value="{{ option }}">{{ option }}</option>
+                    <option value="{{ option }}" {% if selected_low_level_hit2 == option %}selected{% endif %}>{{ option }}</option>
                     {% endfor %}
                 </select><br>
                 <label>Low Color:</label>
                 <select name="color2">
                     {% for option in colors %}
-                    <option value="{{ option }}">{{ option }}</option>
+                    <option value="{{ option }}" {% if selected_color2 == option %}selected{% endif %}>{{ option }}</option>
                     {% endfor %}
                 </select><br>
             </div>
