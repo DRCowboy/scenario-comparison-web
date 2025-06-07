@@ -12,17 +12,13 @@ logger = logging.getLogger(__name__)
 # Define the path to the Excel file in the project’s data folder
 excel_file_path = os.path.join(os.path.dirname(__file__), "data", "DDR_Predictor.xlsx")
 
-# Level hierarchy for target probability calculations
+# Level hierarchy for target probability calculations (updated with all targets)
 LEVEL_HIERARCHY = {
-    'D1': 1, 'D2': 2, 'D3': 3, 'D4': 4, 'D5': 5, 'D6': 6, 'D7': 7, 'D8': 8, 'D9': 9, 'D10': 10,
-    'W1': 11, 'W2': 12, 'W3': 13, 'W4': 14, 'W5': 15, 'W6': 16, 'W7': 17, 'W8': 18, 'W9': 19, 'W10': 20,
-    'M1': 21, 'M2': 22, 'M3': 23, 'M4': 24, 'M5': 25, 'M6': 26, 'M7': 27, 'M8': 28, 'M9': 29, 'M10': 30
+    'Min': 1, 'Min-Med': 2, 'Med-Max': 3, 'Max Extreme': 4
 }
 
-# Target levels for probability calculations
-TARGETS = ['D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9', 'D10',
-           'W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7', 'W8', 'W9', 'W10',
-           'M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9', 'M10']
+# Target levels for probability calculations (updated)
+TARGETS = ['Min', 'Min-Med', 'Med-Max', 'Max Extreme']
 
 # Initialize global variables to avoid NameError
 df = None
@@ -171,18 +167,21 @@ def calculate_target_probabilities(odr_start, start_color, color, odr_model, odr
     unique_low = filtered_df["Low Level Hit"].unique().tolist()
     logger.debug(f"Unique High Level Hit: {unique_high}, Unique Low Level Hit: {unique_low}")
     
-    for _, row in filtered_df.iterrows():
-        high_level = row["High Level Hit"]
-        low_level = row["Low Level Hit"]
-        if high_level in LEVEL_HIERARCHY:
-            target_counts[high_level] += 1
-        else:
-            logger.debug(f"High Level Hit '{high_level}' not in LEVEL_HIERARCHY")
-        if low_level in LEVEL_HIERARCHY:
-            target_counts[low_level] += 1
-        else:
-            logger.debug(f"Low Level Hit '{low_level}' not in LEVEL_HIERARCHY")
+    # Swap columns for target counting based on the scenario filter
+    if high_level_hit != "Any":  # If High Level Hit is filtered, count Low Level Hit targets
+        target_column = "Low Level Hit"
+    elif low_level_hit != "Any":  # If Low Level Hit is filtered, count High Level Hit targets
+        target_column = "High Level Hit"
+    else:  # Default to counting both if no specific filter
+        target_column = "Low Level Hit"  # Can adjust based on preference
     
+    for _, row in filtered_df.iterrows():
+        target_value = row[target_column]
+        if target_value in LEVEL_HIERARCHY:
+            target_counts[target_value] += 1
+        else:
+            logger.debug(f"Target '{target_value}' not in LEVEL_HIERARCHY")
+
     total_count = sum(target_counts.values())
     output_lines = []
     output_lines.append(f"Filtered Rows: {len(filtered_df)}")
