@@ -12,12 +12,12 @@ logger = logging.getLogger(__name__)
 # Define the path to the Excel file in the project’s data folder
 excel_file_path = os.path.join(os.path.dirname(__file__), "data", "DDR_Predictor.xlsx")
 
-# Level hierarchy for target probability calculations (updated with all targets)
+# Level hierarchy for target probability calculations
 LEVEL_HIERARCHY = {
     'Min': 1, 'Min-Med': 2, 'Med-Max': 3, 'Max Extreme': 4
 }
 
-# Target levels for probability calculations (updated)
+# Target levels for probability calculations
 TARGETS = ['Min', 'Min-Med', 'Med-Max', 'Max Extreme']
 
 # Initialize global variables to avoid NameError
@@ -88,7 +88,7 @@ def load_excel_file():
     high_level_hits = sorted(df["High Level Hit"].unique())
     colors_high = sorted(df["High color"].unique())
     low_level_hits = sorted(df["Low Level Hit"].unique())
-    logger.debug(f"Loaded dropdowns: low_level_hits={low_level_hits}, high_level_hits={high_level_hits}, total_rows={total_rows}")
+    logger.debug(f"Loaded dropdowns: locations_low={locations_low}, locations_high={locations_high}, total_rows={total_rows}")
 
 # Initial load of the Excel file
 try:
@@ -159,6 +159,23 @@ def calculate_target_probabilities(odr_start, start_color, color, odr_model, odr
     
     logger.debug(f"Filtered rows: {len(filtered_df)}, filters={{odr_start={odr_start}, low_level_hit={low_level_hit}, high_level_hit={high_level_hit}}}")
     
+    # Calculate most probable Location of High and Location of Low combination
+    if len(filtered_df) > 0:
+        # Create a combined pair count
+        loc_pairs = filtered_df.groupby(['Location of High', 'Location of Low']).size().reset_index(name='counts')
+        if not loc_pairs.empty:
+            max_pair = loc_pairs.loc[loc_pairs['counts'].idxmax()]
+            most_common_high = max_pair['Location of High']
+            most_common_low = max_pair['Location of Low']
+            total_pairs = len(filtered_df)
+            prob_high_low = (max_pair['counts'] / total_pairs) * 100 if total_pairs > 0 else 0
+            location_summary = f"{prob_high_low:.1f}% High {most_common_high}-Low {most_common_low}"
+        else:
+            location_summary = "0.0% High Unknown-Low Unknown"
+    else:
+        location_summary = "0.0% High Unknown-Low Unknown"
+    logger.debug(f"Location summary: {location_summary}")
+
     target_counts = {}
     for target in TARGETS:
         target_counts[target] = 0
@@ -173,7 +190,7 @@ def calculate_target_probabilities(odr_start, start_color, color, odr_model, odr
     elif low_level_hit != "Any":  # If Low Level Hit is filtered, count High Level Hit targets
         target_column = "High Level Hit"
     else:  # Default to counting both if no specific filter
-        target_column = "Low Level Hit"  # Can adjust based on preference
+        target_column = "Low Level Hit"
     
     for _, row in filtered_df.iterrows():
         target_value = row[target_column]
@@ -184,6 +201,7 @@ def calculate_target_probabilities(odr_start, start_color, color, odr_model, odr
 
     total_count = sum(target_counts.values())
     output_lines = []
+    output_lines.append(location_summary)  # Add location probability at the start
     output_lines.append(f"Filtered Rows: {len(filtered_df)}")
     output_lines.append(f"Total Target Counts: {total_count}")
     
@@ -348,15 +366,12 @@ def index():
         )
 
         # Format output
-        scenario1_lines.insert(0, f"Filtered Dataset: {matching_rows1} out of {total_rows} rows")
-        scenario2_lines.insert(0, f"Filtered Dataset: {matching_rows2} out of {total_rows} rows")
         max_lines = max(len(scenario1_lines), len(scenario2_lines))
         scenario1_lines.extend([""] * (max_lines - len(scenario1_lines)))
         scenario2_lines.extend([""] * (max_lines - len(scenario2_lines)))
         output = [
             f"{'Scenario 1:':<50} {'Scenario 2:':>50}",
             f"{'Scenario 1: ' + f'{normalized_prob1:.1f}% chance':<50} {'Scenario 2: ' + f'{normalized_prob2:.1f}% chance':>50}",
-            f"{'Dataset: ' + f'Scenario 1 ({matching_rows1}/{total_rows} rows)':<50} {'Scenario 2 ({matching_rows2}/{total_rows} rows)':>50}",
             "=" * 100
         ]
         output.extend(f"{line1:<50} {line2:>50}" for line1, line2 in zip(scenario1_lines, scenario2_lines))
