@@ -7,9 +7,21 @@ app = Flask(__name__)
 # Define the path to the Excel file in the project’s data folder
 excel_file_path = os.path.join(os.path.dirname(__file__), "data", "DDR_Predictor.xlsx")
 
+# Level hierarchy for target probability calculations
+LEVEL_HIERARCHY = {
+    'D1': 1, 'D2': 2, 'D3': 3, 'D4': 4, 'D5': 5, 'D6': 6, 'D7': 7, 'D8': 8, 'D9': 9, 'D10': 10,
+    'W1': 11, 'W2': 12, 'W3': 13, 'W4': 14, 'W5': 15, 'W6': 16, 'W7': 17, 'W8': 18, 'W9': 19, 'W10': 20,
+    'M1': 21, 'M2': 22, 'M3': 23, 'M4': 24, 'M5': 25, 'M6': 26, 'M7': 27, 'M8': 28, 'M9': 29, 'M10': 30
+}
+
+# Target levels for probability calculations
+TARGETS = ['D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9', 'D10',
+           'W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7', 'W8', 'W9', 'W10',
+           'M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9', 'M10']
+
 # Load and process the Excel file
 def load_excel_file():
-    global df, num_columns, total_rows, odr_starts, start_colors, odr_models, odr_true_false, locations_low, low_level_hits, colors, locations_high, high_level_hits, colors_high
+    global df, num_columns, total_rows, odr_starts, start_colors_df, odr_models, odr_true_false, locations_low, df_colors, colors, locations_high, df_starts, high_level_hits, colors_high
     if not os.path.exists(excel_file_path):
         raise FileNotFoundError(f"The file {excel_file_path} does not exist.")
     
@@ -20,26 +32,24 @@ def load_excel_file():
         for sheet in sheet_names:
             temp_df = pd.read_excel(excel_file_path, sheet_name=sheet, header=0)
             num_columns = len(temp_df.columns)
-            if num_columns == 11:
+            if num_columns in [9, 11]:
                 df_raw = temp_df
                 break
-            elif num_columns == 9:
-                df_raw = temp_df
         
         if df_raw is None:
             raise ValueError("No sheet found with 9 or 11 columns.")
     except Exception as e:
-        raise Exception(f"Failed to load the Excel file: {e}")
+        raise Exception(f"Failed to load Excel file: {e}")
 
     # Define column names
     if num_columns == 11:
         column_names = [
-            "Date", "Odr start", "Start color", "Location of Low", "Low Level Hit", "Low Color",
+            "Date", "Odr start", "Start color", "Location of Low", "Low Level Hit", "Low color",
             "Location of High", "High Level Hit", "High color", "ODR Model", "ODR True/False"
         ]
     elif num_columns == 9:
         column_names = [
-            "Date", "Location of Low", "Low Level Hit", "Low Color",
+            "Date", "Location of Low", "Low Level Hit", "Low color",
             "Location of High", "High Level Hit", "High color", "ODR Model", "ODR True/False"
         ]
     df_raw.columns = column_names
@@ -53,194 +63,188 @@ def load_excel_file():
 
     # Get unique values for dropdowns
     odr_starts = sorted(df["Odr start"].unique()) if num_columns == 11 else []
-    start_colors = sorted(df["Start color"].unique()) if num_columns == 11 else []
+    start_colors_df = sorted(df["Start color"].unique()) if num_columns == 11 else []
     odr_models = sorted(df["ODR Model"].unique())
     odr_true_false = sorted(df["ODR True/False"].unique())
     locations_low = sorted(df["Location of Low"].unique())
-    low_level_hits = sorted(df["Low Level Hit"].unique())
-    colors = sorted(df["Low Color"].unique())
+    df_colors = sorted(df["Low color"].unique())
+    colors = sorted(df_colors)
     locations_high = sorted(df["Location of High"].unique())
     high_level_hits = sorted(df["High Level Hit"].unique())
     colors_high = sorted(df["High color"].unique())
 
 # Initial load of the Excel file
-load_excel_file()
+try:
+    load_excel_file()
+except Exception as e:
+    print(f"Error loading Excel file: {e}")
 
-# Define LEVEL_HIERARCHY and TARGETS
-LEVEL_HIERARCHY = {
-    "Min": ["Min"],
-    "Min-Med": ["Min-Med", "Min"],
-    "Med-Max": ["Med-Max", "Min-Med", "Min"],
-    "Max Extreme": ["Max Extreme", "Med-Max", "Min-Med", "Min"],
-    "Unknown": ["Unknown"]
-}
-
-TARGETS = {
-    "Med-Max": ["Med-Max", "Max Extreme"],
-    "Max Extreme": ["Max Extreme"],
-    "Min": ["Min"]
-}
-
-# Functions for probability calculations
-def get_matching_levels(selected_level):
-    return LEVEL_HIERARCHY.get(selected_level, [selected_level])
-
-def calculate_scenario_probability(odr_start, start_color, odr_model, odr_true_false, location_high, high_level_hit, high_color, location_low, low_level_hit, low_color):
+def calculate_scenario_probability(odr_start, start_color, color, odr_model, odr_true_false, location_high, high_level_hit, color_high, location_low, low_level_hit):
     filtered_df = df.copy()
-    if num_columns == 11:
-        if odr_start != "Any":
-            filtered_df = filtered_df[filtered_df["Odr start"] == odr_start]
-        if start_color != "Any":
-            filtered_df = filtered_df[filtered_df["Start color"] == start_color]
+    
+    if num_columns == 11 and odr_start != "Any":
+        filtered_df = filtered_df[filtered_df["Odr start"] == odr_start]
+    if num_columns == 11 and start_color != "Any":
+        filtered_df = filtered_df[filtered_df["Start color"] == start_color]
     if odr_model != "Any":
         filtered_df = filtered_df[filtered_df["ODR Model"] == odr_model]
     if odr_true_false != "Any":
         filtered_df = filtered_df[filtered_df["ODR True/False"] == odr_true_false]
     if location_high != "Any":
         filtered_df = filtered_df[filtered_df["Location of High"] == location_high]
-    if high_color != "Any":
-        filtered_df = filtered_df[filtered_df["High color"] == high_color]
     if high_level_hit != "Any":
-        matching_levels = get_matching_levels(high_level_hit)
-        filtered_df = filtered_df[filtered_df["High Level Hit"].isin(matching_levels)]
+        filtered_df = filtered_df[filtered_df["High Level Hit"] == high_level_hit]
+    if color_high != "Any":
+        filtered_df = filtered_df[filtered_df["High color"] == color_high]
     if location_low != "Any":
         filtered_df = filtered_df[filtered_df["Location of Low"] == location_low]
-    if low_color != "Any":
-        filtered_df = filtered_df[filtered_df["Low Color"] == low_color]
     if low_level_hit != "Any":
-        matching_levels = get_matching_levels(low_level_hit)
-        filtered_df = filtered_df[filtered_df["Low Level Hit"].isin(matching_levels)]
+        filtered_df = filtered_df[filtered_df["Low Level Hit"] == low_level_hit]
+    if color != "Any":
+        filtered_df = filtered_df[filtered_df["Low color"] == color]
+    
     matching_rows = len(filtered_df)
-    probability = (matching_rows / total_rows) * 100 if total_rows > 0 else 0.0
+    probability = matching_rows / total_rows if total_rows > 0 else 0
     return matching_rows, probability
 
-def calculate_target_probabilities(odr_start, start_color, odr_model, odr_true_false, location_high, high_level_hit, high_color, location_low, low_level_hit, low_color):
+def calculate_target_probabilities(odr_start, start_color, color, odr_model, odr_true_false, location_high, high_level_hit, color_high, location_low, low_level_hit):
     filtered_df = df.copy()
-    if num_columns == 11:
-        if odr_start != "Any":
-            filtered_df = filtered_df[filtered_df["Odr start"] == odr_start]
-        if start_color != "Any":
-            filtered_df = filtered_df[filtered_df["Start color"] == start_color]
+    
+    if num_columns == 11 and odr_start != "Any":
+        filtered_df = filtered_df[filtered_df["Odr start"] == odr_start]
+    if num_columns == 11 and start_color != "Any":
+        filtered_df = filtered_df[filtered_df["Start color"] == start_color]
     if odr_model != "Any":
         filtered_df = filtered_df[filtered_df["ODR Model"] == odr_model]
     if odr_true_false != "Any":
         filtered_df = filtered_df[filtered_df["ODR True/False"] == odr_true_false]
     if location_high != "Any":
         filtered_df = filtered_df[filtered_df["Location of High"] == location_high]
-    if high_color != "Any":
-        filtered_df = filtered_df[filtered_df["High color"] == high_color]
     if high_level_hit != "Any":
-        matching_levels = get_matching_levels(high_level_hit)
-        filtered_df = filtered_df[filtered_df["High Level Hit"].isin(matching_levels)]
+        filtered_df = filtered_df[filtered_df["High Level Hit"] == high_level_hit]
+    if color_high != "Any":
+        filtered_df = filtered_df[filtered_df["High color"] == color_high]
     if location_low != "Any":
         filtered_df = filtered_df[filtered_df["Location of Low"] == location_low]
-    if low_color != "Any":
-        filtered_df = filtered_df[filtered_df["Low Color"] == low_color]
     if low_level_hit != "Any":
-        matching_levels = get_matching_levels(low_level_hit)
-        filtered_df = filtered_df[filtered_df["Low Level Hit"].isin(matching_levels)]
-    matching_rows = len(filtered_df)
-    if matching_rows == 0:
-        return ["No matching data found for this scenario."]
-    output = []
-    for target, target_levels in TARGETS.items():
-        high_target_df = filtered_df[filtered_df["High Level Hit"].isin(target_levels)]
-        low_target_df = filtered_df[filtered_df["Low Level Hit"].isin(target_levels)]
-        high_target_count = len(high_target_df)
-        low_target_count = len(low_target_df)
-        target_count = high_target_count + low_target_count - len(high_target_df[high_target_df.index.isin(low_target_df.index)])
-        target_prob = (target_count / matching_rows) * 100 if matching_rows > 0 else 0.0
-        location_probs = []
-        if target_count > 0:
-            high_combinations = high_target_df.groupby(["Location of High", "Location of Low"]).size().reset_index(name="count")
-            high_combinations["probability"] = (high_combinations["count"] / target_count) * 100
-            low_combinations = low_target_df.groupby(["Location of High", "Location of Low"]).size().reset_index(name="count")
-            low_combinations["probability"] = (low_combinations["count"] / target_count) * 100
-            all_combinations = pd.concat([high_combinations, low_combinations])
-            all_combinations = all_combinations.groupby(["Location of High", "Location of Low"])["probability"].sum().reset_index()
-            all_combinations = all_combinations.sort_values(by="probability", ascending=False)
-            for _, row in all_combinations.iterrows():
-                loc_high = row["Location of High"]
-                loc_low = row["Location of Low"]
-                prob = row["probability"]
-                if prob > 0:
-                    location_probs.append(f"    Details: High {loc_high}-Low {loc_low} ({prob:.1f}%)")
-        output.append(f"Target: {target} ({target_prob:.1f}%)")
-        output.extend(location_probs if location_probs else ["    No specific location combinations found."])
-    return output
+        filtered_df = filtered_df[filtered_df["Low Level Hit"] == low_level_hit]
+    if color != "Any":
+        filtered_df = filtered_df[filtered_df["Low color"] == color]
+    
+    target_counts = {}
+    for target in TARGETS:
+        target_counts[target] = 0
+    
+    for _, row in filtered_df.iterrows():
+        high_level = row["High Level Hit"]
+        low_level = row["Low Level Hit"]
+        if high_level in LEVEL_HIERARCHY:
+            target_counts[high_level] += 1
+        if low_level in LEVEL_HIERARCHY:
+            target_counts[low_level] += 1
+    
+    total_count = sum(target_counts.values())
+    output_lines = []
+    if total_count > 0:
+        for target in TARGETS:
+            count = target_counts[target]
+            percentage = (count / total_count) * 100
+            if count > 0:
+                output_lines.append(f"{target}: {count} time{'s' if count != 1 else ''}, {percentage:.1f}%")
+    
+    return output_lines
 
-# File upload route
 @app.route("/upload", methods=["POST"])
 def upload_file():
-    global excel_file_path
-    if "file" not in request.files:
-        return render_template("index.html", error="No file uploaded", 
-                             odr_starts=["Any"] + odr_starts if num_columns == 11 else ["Any"],
-                             start_colors=["Any"] + start_colors if num_columns == 11 else ["Any"],
-                             odr_models=["Any"] + odr_models,
-                             odr_true_false=["Any"] + odr_true_false,
-                             locations_high=["Any"] + locations_high,
-                             high_level_hits=["Any"] + high_level_hits,
-                             colors_high=["Any"] + colors_high,
-                             locations_low=["Any"] + locations_low,
-                             low_level_hits=["Any"] + low_level_hits,
-                             colors=["Any"] + colors,
-                             result="Comparison will appear here")
-    file = request.files["file"]
-    if file.filename == "":
-        return render_template("index.html", error="No file selected", 
-                             odr_starts=["Any"] + odr_starts if num_columns == 11 else ["Any"],
-                             start_colors=["Any"] + start_colors if num_columns == 11 else ["Any"],
-                             odr_models=["Any"] + odr_models,
-                             odr_true_false=["Any"] + odr_true_false,
-                             locations_high=["Any"] + locations_high,
-                             high_level_hits=["Any"] + high_level_hits,
-                             colors_high=["Any"] + colors_high,
-                             locations_low=["Any"] + locations_low,
-                             low_level_hits=["Any"] + low_level_hits,
-                             colors=["Any"] + colors,
-                             result="Comparison will appear here")
-    if file and file.filename.endswith(".xlsx"):
-        file.save(excel_file_path)
+    if 'file' not in request.files:
+        return render_template(
+            "index.html",
+            error="No file part in the request",
+            odr_starts=["Any"] + odr_starts if num_columns == 11 else ["Any"],
+            start_colors=["Any"] + start_colors_df if num_columns == 11 else [],
+            odr_models=["Any"] + odr_models,
+            odr_true_false=["Any"] + odr_true_false,
+            locations_high=["Any"] + locations_high,
+            high_level_hits=["Any"] + high_level_hits,
+            colors_high=["Any"] + colors_high,
+            locations_low=["Any"] + locations_low,
+            low_level_hits=["Any"] + low_level_hits,
+            colors=["Any"] + colors,
+            result="Comparison will appear here"
+        )
+    
+    file = request.files['file']
+    if file.filename == '':
+        return render_template(
+            "index.html",
+            error="No file selected",
+            odr_starts=["Any"] + odr_starts if num_columns == 11 else [],
+            start_colors=["Any"] + start_colors_df if num_columns == 11 else [],
+            odr_models=["Any"] + odr_models,
+            odr_true_false=["Any"] + odr_true_false,
+            locations_high=["Any"] + locations_high,
+            high_level_hits=["Any"] + high_level_hits,
+            colors_high=["Any"] + colors_high,
+            locations_low=["Any"] + locations_low,
+            low_level_hits=["Any"],
+ + low_level_hits,
+            colors=["Any"],
+ + colors,
+            result="Comparison will appear here"
+        )
+    
+    if file and file.filename.endswith('.xlsx'):
         try:
-            load_excel_file()  # Reload the Excel file to update dropdowns
-            return render_template("index.html", success="File uploaded successfully", 
-                                 odr_starts=["Any"] + odr_starts if num_columns == 11 else ["Any"],
-                                 start_colors=["Any"] + start_colors if num_columns == 11 else ["Any"],
-                                 odr_models=["Any"] + odr_models,
-                                 odr_true_false=["Any"] + odr_true_false,
-                                 locations_high=["Any"] + locations_high,
-                                 high_level_hits=["Any"] + high_level_hits,
-                                 colors_high=["Any"] + colors_high,
-                                 locations_low=["Any"] + locations_low,
-                                 low_level_hits=["Any"] + low_level_hits,
-                                 colors=["Any"] + colors,
-                                 result="Comparison will appear here")
+            global excel_file_path
+            file.save(excel_file_path)
+            load_excel_file()
+            return render_template(
+                "index.html",
+                success=["File uploaded successfully"],
+                odr_starts=["Any"] + odr_starts if num_columns == 11 else ["Any"],
+                start_colors=["Any"] + start_colors_df if num_columns == 11 else ["Any"],
+                odr_models=["Any"] + odr_models,
+                odr_true_false=["Any"] + odr_true_false,
+                locations_high=["Any"] + locations_high,
+                high_level_hits=["Any"] + high_level_hits,
+                colors_high=["Any"] + colors_high,
+                locations_low=["Any"] + locations_low,
+                low_level_hits=["Any"] + low_level_hits,
+                colors=["Any"] + colors,
+                result="Comparison will appear here"
+            )
         except Exception as e:
-            return render_template("index.html", error=f"Failed to load uploaded file: {str(e)}",
-                                 odr_starts=["Any"] + odr_starts if num_columns == 11 else ["Any"],
-                                 start_colors=["Any"] + start_colors if num_columns == 11 else ["Any"],
-                                 odr_models=["Any"] + odr_models,
-                                 odr_true_false=["Any"] + odr_true_false,
-                                 locations_high=["Any"] + locations_high,
-                                 high_level_hits=["Any"] + high_level_hits,
-                                 colors_high=["Any"] + colors_high,
-                                 locations_low=["Any"] + locations_low,
-                                 low_level_hits=["Any"] + low_level_hits,
-                                 colors=["Any"] + colors,
-                                 result="Comparison will appear here")
-    return render_template("index.html", error="Invalid file type. Please upload an .xlsx file",
-                         odr_starts=["Any"] + odr_starts if num_columns == 11 else ["Any"],
-                         start_colors=["Any"] + start_colors if num_columns == 11 else ["Any"],
-                         odr_models=["Any"] + odr_models,
-                         odr_true_false=["Any"] + odr_true_false,
-                         locations_high=["Any"] + locations_high,
-                         high_level_hits=["Any"] + high_level_hits,
-                         colors_high=["Any"] + colors_high,
-                         locations_low=["Any"] + locations_low,
-                         low_level_hits=["Any"] + low_level_hits,
-                         colors=["Any"] + colors,
-                         result="Comparison will appear here")
+            return render_template(
+                "index.html",
+                error=f"Error processing file: {str(e)}",
+                odr_starts=["Any"] + odr_starts if num_columns == 11 else ["Any"],
+                start_colors=["Any"] + start_colors_df if num_columns == 11 else ["Any"],
+                odr_models=["Any"] + odr_models,
+                odr_true_false=["Any"] + odr_true_false,
+                locations_high=["Any"] + locations_high,
+                high_level_hits=["Any"] + high_level_hits,
+                colors_high=["Any"] + colors_high,
+                locations_low=["Any"] + locations_low,
+                low_level_hits=["Any"] + low_level_hits,
+                colors=["Any"] + colors,
+                result="Comparison will appear here"
+            )
+    else:
+        return render_template(
+            "index.html",
+            error="Invalid file format. Please upload an .xlsx file.",
+            odr_starts=["Any"] + odr_starts if num_columns == 11 else ["Any"],
+            start_colors=["Any"] + start_colors_df if num_columns == 11 else ["Any"],
+            odr_models=["Any"] + odr_models,
+            odr_true_false=["Any"] + odr_true_false,
+            locations_high=["Any"] + locations_high,
+            high_level_hits=["Any"] + high_level_hits,
+            colors_high=["Any"] + colors_high,
+            locations_low=["Any"] + locations_low,
+            low_level_hits=["Any"] + low_level_hits,
+            colors=["Any"] + colors,
+            result="Comparison will appear here"
+        )
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -252,10 +256,10 @@ def index():
         odr_true_false1 = request.form.get("odr_true_false1", "Any")
         location_high1 = request.form.get("location_high1", "Any")
         high_level_hit1 = request.form.get("high_level_hit1", "Any")
-        high_color1 = request.form.get("color_high1", "Any")
+        color_high1 = request.form.get("color_high1", "Any")
         location_low1 = request.form.get("location_low1", "Any")
         low_level_hit1 = request.form.get("low_level_hit1", "Any")
-        low_color1 = request.form.get("color1", "Any")
+        color1 = request.form.get("color1", "Any")
 
         # Get Scenario 2 inputs
         odr_start2 = request.form.get("odr_start2", "Any") if num_columns == 11 else "Any"
@@ -264,21 +268,21 @@ def index():
         odr_true_false2 = request.form.get("odr_true_false2", "Any")
         location_high2 = request.form.get("location_high2", "Any")
         high_level_hit2 = request.form.get("high_level_hit2", "Any")
-        high_color2 = request.form.get("color_high2", "Any")
+        color_high2 = request.form.get("color_high2", "Any")
         location_low2 = request.form.get("location_low2", "Any")
         low_level_hit2 = request.form.get("low_level_hit2", "Any")
-        low_color2 = request.form.get("color2", "Any")
+        color2 = request.form.get("color2", "Any")
 
         # Calculate probabilities
         matching_rows1, prob1 = calculate_scenario_probability(
-            odr_start1, start_color1, odr_model1, odr_true_false1,
-            location_high1, high_level_hit1, high_color1,
-            location_low1, low_level_hit1, low_color1
+            odr_start1, start_color1, color1, odr_model1, odr_true_false1,
+            location_high1, high_level_hit1, color_high1,
+            location_low1, low_level_hit1
         )
         matching_rows2, prob2 = calculate_scenario_probability(
-            odr_start2, start_color2, odr_model2, odr_true_false2,
-            location_high2, high_level_hit2, high_color2,
-            location_low2, low_level_hit2, low_color2
+            odr_start2, start_color2, color2, odr_model2, odr_true_false2,
+            location_high2, high_level_hit2, color_high2,
+            location_low2, low_level_hit2
         )
 
         # Normalize probabilities
@@ -288,14 +292,14 @@ def index():
 
         # Calculate target probabilities
         scenario1_lines = calculate_target_probabilities(
-            odr_start1, start_color1, odr_model1, odr_true_false1,
-            location_high1, high_level_hit1, high_color1,
-            location_low1, low_level_hit1, low_color1
+            odr_start1, start_color1, color1, odr_model1, odr_true_false1,
+            location_high1, high_level_hit1, color_high1,
+            location_low1, low_level_hit1
         )
         scenario2_lines = calculate_target_probabilities(
-            odr_start2, start_color2, odr_model2, odr_true_false2,
-            location_high2, high_level_hit2, high_color2,
-            location_low2, low_level_hit2, low_color2
+            odr_start2, start_color2, color2, odr_model2, odr_true_false2,
+            location_high2, high_level_hit2, color_high2,
+            location_low2, low_level_hit2
         )
 
         # Format output
@@ -315,7 +319,7 @@ def index():
         return render_template(
             "index.html",
             odr_starts=["Any"] + odr_starts if num_columns == 11 else ["Any"],
-            start_colors=["Any"] + start_colors if num_columns == 11 else ["Any"],
+            start_colors=["Any"] + start_colors_df if num_columns == 11 else ["Any"],
             odr_models=["Any"] + odr_models,
             odr_true_false=["Any"] + odr_true_false,
             locations_high=["Any"] + locations_high,
@@ -324,13 +328,34 @@ def index():
             locations_low=["Any"] + locations_low,
             low_level_hits=["Any"] + low_level_hits,
             colors=["Any"] + colors,
-            result="\n".join(output)
+            result="\n".join(output),
+            # Pass selected values to preserve dropdown selections
+            selected_odr_start1=odr_start1,
+            selected_start_color1=start_color1,
+            selected_odr_model1=odr_model1,
+            selected_odr_true_false1=odr_true_false1,
+            selected_location_high1=location_high1,
+            selected_high_level_hit1=high_level_hit1,
+            selected_color_high1=color_high1,
+            selected_location_low1=location_low1,
+            selected_low_level_hit1=low_level_hit1,
+            selected_color1=color1,
+            selected_odr_start2=odr_start2,
+            selected_start_color2=start_color2,
+            selected_odr_model2=odr_model2,
+            selected_odr_true_false2=odr_true_false2,
+            selected_location_high2=location_high2,
+            selected_high_level_hit2=high_level_hit2,
+            selected_color_high2=color_high2,
+            selected_location_low2=location_low2,
+            selected_low_level_hit2=low_level_hit2,
+            selected_color2=color2
         )
 
     return render_template(
         "index.html",
         odr_starts=["Any"] + odr_starts if num_columns == 11 else ["Any"],
-        start_colors=["Any"] + start_colors if num_columns == 11 else ["Any"],
+        start_colors=["Any"] + start_colors_df if num_columns == 11 else ["Any"],
         odr_models=["Any"] + odr_models,
         odr_true_false=["Any"] + odr_true_false,
         locations_high=["Any"] + locations_high,
