@@ -12,13 +12,14 @@ logger = logging.getLogger(__name__)
 # Define the path to the Excel file in the project’s data folder
 excel_file_path = os.path.join(os.path.dirname(__file__), "data", "DDR_Predictor.xlsx")
 
-# Level hierarchy for target probability calculations
+# Level hierarchy for reference (simplified usage)
 LEVEL_HIERARCHY = {
-    'Min': 1, 'Min-Med': 2, 'Med-Max': 3, 'Max Extreme': 4
+    "Min": ["Min"],
+    "Min-Med": ["Min-Med", "Min"],
+    "Med-Max": ["Med-Max", "Min-Med", "Min"],
+    "Max Extreme": ["Max Extreme", "Med-Max", "Min-Med", "Min"],
+    "Unknown": ["Unknown"]
 }
-
-# Target levels for probability calculations
-TARGETS = ['Min', 'Min-Med', 'Med-Max', 'Max Extreme']
 
 # Initialize global variables to avoid NameError
 df = None
@@ -114,19 +115,21 @@ def calculate_scenario_probability(odr_start, start_color, color, odr_model, odr
     if location_high != "Any":
         filtered_df = filtered_df[filtered_df["Location of High"] == location_high]
     if high_level_hit != "Any":
-        filtered_df = filtered_df[filtered_df["High Level Hit"] == high_level_hit]
+        matching_levels = LEVEL_HIERARCHY.get(high_level_hit, [high_level_hit])
+        filtered_df = filtered_df[filtered_df["High Level Hit"].isin(matching_levels)]
     if color_high != "Any":
         filtered_df = filtered_df[filtered_df["High color"] == color_high]
     if location_low != "Any":
         filtered_df = filtered_df[filtered_df["Location of Low"] == location_low]
     if low_level_hit != "Any":
-        filtered_df = filtered_df[filtered_df["Low Level Hit"] == low_level_hit]
+        matching_levels = LEVEL_HIERARCHY.get(low_level_hit, [low_level_hit])
+        filtered_df = filtered_df[filtered_df["Low Level Hit"].isin(matching_levels)]
     if color != "Any":
         filtered_df = filtered_df[filtered_df["Low color"] == color]
     
     matching_rows = len(filtered_df)
     probability = matching_rows / total_rows if total_rows > 0 else 0
-    logger.debug(f"Scenario probability: matching_rows={matching_rows}, probability={probability}, filters={{odr_start={odr_start}, low_level_hit={low_level_hit}, high_level_hit={high_level_hit}}}")
+    logger.debug(f"Scenario probability: matching_rows={matching_rows}, probability={probability}, filters={{odr_start={odr_start}, color={color}, high_level_hit={high_level_hit}}}")
     return matching_rows, probability
 
 def calculate_target_probabilities(odr_start, start_color, color, odr_model, odr_true_false, location_high, high_level_hit, color_high, location_low, low_level_hit):
@@ -147,21 +150,22 @@ def calculate_target_probabilities(odr_start, start_color, color, odr_model, odr
     if location_high != "Any":
         filtered_df = filtered_df[filtered_df["Location of High"] == location_high]
     if high_level_hit != "Any":
-        filtered_df = filtered_df[filtered_df["High Level Hit"] == high_level_hit]
+        matching_levels = LEVEL_HIERARCHY.get(high_level_hit, [high_level_hit])
+        filtered_df = filtered_df[filtered_df["High Level Hit"].isin(matching_levels)]
     if color_high != "Any":
         filtered_df = filtered_df[filtered_df["High color"] == color_high]
     if location_low != "Any":
         filtered_df = filtered_df[filtered_df["Location of Low"] == location_low]
     if low_level_hit != "Any":
-        filtered_df = filtered_df[filtered_df["Low Level Hit"] == low_level_hit]
+        matching_levels = LEVEL_HIERARCHY.get(low_level_hit, [low_level_hit])
+        filtered_df = filtered_df[filtered_df["Low Level Hit"].isin(matching_levels)]
     if color != "Any":
         filtered_df = filtered_df[filtered_df["Low color"] == color]
     
-    logger.debug(f"Filtered rows: {len(filtered_df)}, filters={{odr_start={odr_start}, low_level_hit={low_level_hit}, high_level_hit={high_level_hit}}}")
+    logger.debug(f"Filtered rows: {len(filtered_df)}, filters={{odr_start={odr_start}, color={color}, high_level_hit={high_level_hit}}}")
     
     # Calculate most probable Location of High and Location of Low combination
     if len(filtered_df) > 0:
-        # Create a combined pair count
         loc_pairs = filtered_df.groupby(['Location of High', 'Location of Low']).size().reset_index(name='counts')
         if not loc_pairs.empty:
             max_pair = loc_pairs.loc[loc_pairs['counts'].idxmax()]
@@ -176,46 +180,27 @@ def calculate_target_probabilities(odr_start, start_color, color, odr_model, odr
         location_summary = "0.0% High Unknown-Low Unknown"
     logger.debug(f"Location summary: {location_summary}")
 
-    target_counts = {}
-    for target in TARGETS:
-        target_counts[target] = 0
-    
-    unique_high = filtered_df["High Level Hit"].unique().tolist()
-    unique_low = filtered_df["Low Level Hit"].unique().tolist()
-    logger.debug(f"Unique High Level Hit: {unique_high}, Unique Low Level Hit: {unique_low}")
-    
-    # Swap columns for target counting based on the scenario filter
-    if high_level_hit != "Any":  # If High Level Hit is filtered, count Low Level Hit targets
-        target_column = "Low Level Hit"
-    elif low_level_hit != "Any":  # If Low Level Hit is filtered, count High Level Hit targets
-        target_column = "High Level Hit"
-    else:  # Default to counting both if no specific filter
-        target_column = "Low Level Hit"
-    
-    for _, row in filtered_df.iterrows():
-        target_value = row[target_column]
-        if target_value in LEVEL_HIERARCHY:
-            target_counts[target_value] += 1
-        else:
-            logger.debug(f"Target '{target_value}' not in LEVEL_HIERARCHY")
+    matching_rows = len(filtered_df)
+    if matching_rows == 0:
+        return [location_summary, "No matching data found for this scenario."]
 
-    total_count = sum(target_counts.values())
-    output_lines = []
-    output_lines.append(location_summary)  # Add location probability at the start
-    output_lines.append(f"Filtered Rows: {len(filtered_df)}")
-    output_lines.append(f"Total Target Counts: {total_count}")
+    # Dynamically calculate target probabilities
+    output = [location_summary]
+    # Calculate for High Level Hit
+    high_level_counts = filtered_df['High Level Hit'].value_counts().sort_index()
+    total_high = high_level_counts.sum()
+    for level, count in high_level_counts.items():
+        percentage = (count / total_high) * 100 if total_high > 0 else 0
+        output.append(f"High {level}: {percentage:.1f}%")
     
-    if total_count > 0:
-        for target in TARGETS:
-            count = target_counts[target]
-            percentage = (count / total_count) * 100
-            if count > 0:
-                output_lines.append(f"{target}: {count} time{'s' if count != 1 else ''}, {percentage:.1f}%")
-    else:
-        output_lines.append("No matching targets found")
-    
-    logger.debug(f"Target probabilities: {output_lines}")
-    return output_lines
+    # Calculate for Low Level Hit
+    low_level_counts = filtered_df['Low Level Hit'].value_counts().sort_index()
+    total_low = low_level_counts.sum()
+    for level, count in low_level_counts.items():
+        percentage = (count / total_low) * 100 if total_low > 0 else 0
+        output.append(f"Low {level}: {percentage:.1f}%")
+
+    return output
 
 @app.route("/upload", methods=["POST"])
 def upload_file():
@@ -310,14 +295,19 @@ def upload_file():
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    logger.debug(f"Request method: {request.method}, Form data: {request.form}")
+    logger.debug(f"Request method: {request.method}, Form data: {request.form.to_dict()}")
     
     if request.method == "POST" and "file" not in request.form:
-        # Get Scenario 1 inputs
-        odr_start1 = request.form.get("odr_start1", "Any")
-        start_color1 = request.form.get("start_color1", "Any")
-        odr_model1 = request.form.get("odr_model1", "Any")
-        odr_true_false1 = request.form.get("odr_true_false1", "Any")
+        # Get shared inputs from Scenario 1 with default "Any" if not present
+        selected_odr_start = request.form.get("odr_start1", "Any")
+        selected_start_color = request.form.get("start_color1", "Any")
+        selected_odr_model = request.form.get("odr_model1", "Any")
+        selected_odr_true_false = request.form.get("odr_true_false1", "Any")
+        
+        # Log received form data for debugging
+        logger.debug(f"Received form data: odr_start1={request.form.get('odr_start1')}, odr_true_false1={request.form.get('odr_true_false1')}")
+
+        # Get Scenario 1 specific inputs
         location_high1 = request.form.get("location_high1", "Any")
         high_level_hit1 = request.form.get("high_level_hit1", "Any")
         color_high1 = request.form.get("color_high1", "Any")
@@ -325,11 +315,7 @@ def index():
         low_level_hit1 = request.form.get("low_level_hit1", "Any")
         color1 = request.form.get("color1", "Any")
 
-        # Get Scenario 2 inputs
-        odr_start2 = request.form.get("odr_start2", "Any")
-        start_color2 = request.form.get("start_color2", "Any")
-        odr_model2 = request.form.get("odr_model2", "Any")
-        odr_true_false2 = request.form.get("odr_true_false2", "Any")
+        # Get Scenario 2 specific inputs
         location_high2 = request.form.get("location_high2", "Any")
         high_level_hit2 = request.form.get("high_level_hit2", "Any")
         color_high2 = request.form.get("color_high2", "Any")
@@ -337,41 +323,40 @@ def index():
         low_level_hit2 = request.form.get("low_level_hit2", "Any")
         color2 = request.form.get("color2", "Any")
 
-        logger.debug(f"Scenario 1 inputs: odr_start1={odr_start1}, low_level_hit1={low_level_hit1}, high_level_hit1={high_level_hit1}")
-        logger.debug(f"Scenario 2 inputs: odr_start2={odr_start2}, low_level_hit2={low_level_hit2}, high_level_hit2={high_level_hit2}")
+        logger.debug(f"Shared inputs: selected_odr_start={selected_odr_start}, selected_odr_model={selected_odr_model}, selected_odr_true_false={selected_odr_true_false}")
+        logger.debug(f"Scenario 1 inputs: location_high1={location_high1}, high_level_hit1={high_level_hit1}, color1={color1}")
+        logger.debug(f"Scenario 2 inputs: location_high2={location_high2}, high_level_hit2={high_level_hit2}, color2={color2}")
 
         # Calculate probabilities
         matching_rows1, prob1 = calculate_scenario_probability(
-            odr_start1, start_color1, color1, odr_model1, odr_true_false1,
+            selected_odr_start, selected_start_color, color1, selected_odr_model, selected_odr_true_false,
             location_high1, high_level_hit1, color_high1, location_low1, low_level_hit1
         )
         matching_rows2, prob2 = calculate_scenario_probability(
-            odr_start2, start_color2, color2, odr_model2, odr_true_false2,
+            selected_odr_start, selected_start_color, color2, selected_odr_model, selected_odr_true_false,
             location_high2, high_level_hit2, color_high2, location_low2, low_level_hit2
         )
 
         # Normalize probabilities
-        total_prob = prob1 + prob2
+        total_prob = prob1 + prob2 if prob1 + prob2 > 0 else 1  # Avoid division by zero
         normalized_prob1 = (prob1 / total_prob) * 100 if total_prob > 0 else 0.0
         normalized_prob2 = (prob2 / total_prob) * 100 if total_prob > 0 else 0.0
 
         # Calculate target probabilities
         scenario1_lines = calculate_target_probabilities(
-            odr_start1, start_color1, color1, odr_model1, odr_true_false1,
+            selected_odr_start, selected_start_color, color1, selected_odr_model, selected_odr_true_false,
             location_high1, high_level_hit1, color_high1, location_low1, low_level_hit1
         )
         scenario2_lines = calculate_target_probabilities(
-            odr_start2, start_color2, color2, odr_model2, odr_true_false2,
+            selected_odr_start, selected_start_color, color2, selected_odr_model, selected_odr_true_false,
             location_high2, high_level_hit2, color_high2, location_low2, low_level_hit2
         )
 
-        # Format output
-        max_lines = max(len(scenario1_lines), len(scenario2_lines))
-        scenario1_lines.extend([""] * (max_lines - len(scenario1_lines)))
-        scenario2_lines.extend([""] * (max_lines - len(scenario2_lines)))
+        # Format output with proper variable substitution
         output = [
             f"{'Scenario 1:':<50} {'Scenario 2:':>50}",
             f"{'Scenario 1: ' + f'{normalized_prob1:.1f}% chance':<50} {'Scenario 2: ' + f'{normalized_prob2:.1f}% chance':>50}",
+            f"Dataset: Scenario 1 ({matching_rows1}/{total_rows} rows)         Dataset: Scenario 2 ({matching_rows2}/{total_rows} rows)",
             "=" * 100
         ]
         output.extend(f"{line1:<50} {line2:>50}" for line1, line2 in zip(scenario1_lines, scenario2_lines))
@@ -391,20 +376,16 @@ def index():
             colors=["Any"] + colors,
             result="\n".join(output),
             # Pass selected values
-            selected_odr_start1=odr_start1,
-            selected_start_color1=start_color1,
-            selected_odr_model1=odr_model1,
-            selected_odr_true_false1=odr_true_false1,
+            selected_odr_start=selected_odr_start,
+            selected_start_color=selected_start_color,
+            selected_odr_model=selected_odr_model,
+            selected_odr_true_false=selected_odr_true_false,
             selected_location_high1=location_high1,
             selected_high_level_hit1=high_level_hit1,
             selected_color_high1=color_high1,
             selected_location_low1=location_low1,
             selected_low_level_hit1=low_level_hit1,
             selected_color1=color1,
-            selected_odr_start2=odr_start2,
-            selected_start_color2=start_color2,
-            selected_odr_model2=odr_model2,
-            selected_odr_true_false2=odr_true_false2,
             selected_location_high2=location_high2,
             selected_high_level_hit2=high_level_hit2,
             selected_color_high2=color_high2,

@@ -6,171 +6,211 @@
     <title>Scenario Comparison</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
-        .container { display: flex; justify-content: space-between; }
-        .scenario { width: 45%; }
-        h2 { text-align: center; }
-        label { display: inline-block; width: 150px; margin: 5px 0; }
-        select, button, input[type="file"] { width: 200px; padding: 5px; margin: 5px 0; }
-        .result { margin-top: 20px; white-space: pre; font-family: 'Courier New', Courier, monospace; }
-        button { width: 100%; background-color: lightblue; }
-        .clear-button { background-color: lightcoral; }
-        .error { color: red; }
+        .scenario { display: inline-block; vertical-align: top; margin-right: 20px; }
+        table { border-collapse: collapse; width: 100%; max-width: 600px; }
+        td, th { padding: 10px; text-align: left; border: 1px solid #ddd; }
+        select { width: 200px; padding: 5px; }
+        .error, .success { color: red; font-weight: bold; }
         .success { color: green; }
+        pre { white-space: pre-wrap; word-wrap: break-word; }
     </style>
 </head>
 <body>
     <h1>Scenario Comparison</h1>
-    <!-- File Upload Form -->
-    <form method="POST" enctype="multipart/form-data" action="/upload">
-        <label>Upload Excel File:</label>
+
+    <!-- Upload Form -->
+    <form method="post" enctype="multipart/form-data" action="/upload">
         <input type="file" name="file" accept=".xlsx">
-        <button type="submit">Upload</button>
+        <input type="submit" value="Upload Excel File">
+        {% if error %}
+            <p class="error">{{ error }}</p>
+        {% endif %}
+        {% if success %}
+            <p class="success">{{ success }}</p>
+        {% endif %}
     </form>
-    {% if error %}
-    <p class="error">{{ error }}</p>
-    {% endif %}
-    {% if success %}
-    <p class="success">{{ success }}</p>
-    {% endif %}
-    <!-- Scenario Comparison Form -->
-    <form method="POST" action="/">
-        <div class="container">
-            <!-- Scenario 1 -->
-            <div class="scenario">
-                <h2>Scenario 1</h2>
-                {% if odr_starts|length > 0 %}
-                <label>Odr start:</label>
-                <select name="odr_start1">
-                    {% for option in odr_starts %}
-                    <option value="{{ option }}" {% if selected_odr_start1 == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select><br>
-                <label>Start color:</label>
-                <select name="start_color1">
-                    {% for option in start_colors %}
-                    <option value="{{ option }}" {% if selected_start_color1 == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select><br>
-                {% endif %}
-                <label>ODR Model:</label>
-                <select name="odr_model1">
-                    {% for option in odr_models %}
-                    <option value="{{ option }}" {% if selected_odr_model1 == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select><br>
-                <label>ODR True/False:</label>
-                <select name="odr_true_false1">
-                    {% for option in odr_true_false %}
-                    <option value="{{ option }}" {% if selected_odr_true_false1 == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select><br>
-                <label>Location of High:</label>
-                <select name="location_high1">
-                    {% for option in locations_high %}
-                    <option value="{{ option }}" {% if selected_location_high1 == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select><br>
-                <label>High Level Hit:</label>
-                <select name="high_level_hit1">
-                    {% for option in high_level_hits %}
-                    <option value="{{ option }}" {% if selected_high_level_hit1 == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select><br>
-                <label>High Color:</label>
-                <select name="color_high1">
-                    {% for option in colors_high %}
-                    <option value="{{ option }}" {% if selected_color_high1 == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select><br>
-                <label>Location of Low:</label>
-                <select name="location_low1">
-                    {% for option in locations_low %}
-                    <option value="{{ option }}" {% if selected_location_low1 == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select><br>
-                <label>Low Level Hit:</label>
-                <select name="low_level_hit1">
-                    {% for option in low_level_hits %}
-                    <option value="{{ option }}" {% if selected_low_level_hit1 == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select><br>
-                <label>Low Color:</label>
-                <select name="color1">
-                    {% for option in colors %}
-                    <option value="{{ option }}" {% if selected_color1 == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select><br>
-            </div>
-            <!-- Scenario 2 -->
-            <div class="scenario">
-                <h2>Scenario 2</h2>
-                {% if odr_starts|length > 0 %}
-                <label>Odr start:</label>
-                <select name="odr_start2">
-                    {% for option in odr_starts %}
-                    <option value="{{ option }}" {% if selected_odr_start2 == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select><br>
-                <label>Start color:</label>
-                <select name="start_color2">
-                    {% for option in start_colors %}
-                    <option value="{{ option }}" {% if selected_start_color2 == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select><br>
-                {% endif %}
-                <label>ODR Model:</label>
-                <select name="odr_model2">
-                    {% for option in odr_models %}
-                    <option value="{{ option }}" {% if selected_odr_model2 == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select><br>
-                <label>ODR True/False:</label>
-                <select name="odr_true_false2">
-                    {% for option in odr_true_false %}
-                    <option value="{{ option }}" {% if selected_odr_true_false2 == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select><br>
-                <label>Location of High:</label>
-                <select name="location_high2">
-                    {% for option in locations_high %}
-                    <option value="{{ option }}" {% if selected_location_high2 == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select><br>
-                <label>High Level Hit:</label>
-                <select name="high_level_hit2">
-                    {% for option in high_level_hits %}
-                    <option value="{{ option }}" {% if selected_high_level_hit2 == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select><br>
-                <label>High Color:</label>
-                <select name="color_high2">
-                    {% for option in colors_high %}
-                    <option value="{{ option }}" {% if selected_color_high2 == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select><br>
-                <label>Location of Low:</label>
-                <select name="location_low2">
-                    {% for option in locations_low %}
-                    <option value="{{ option }}" {% if selected_location_low2 == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select><br>
-                <label>Low Level Hit:</label>
-                <select name="low_level_hit2">
-                    {% for option in low_level_hits %}
-                    <option value="{{ option }}" {% if selected_low_level_hit2 == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select><br>
-                <label>Low Color:</label>
-                <select name="color2">
-                    {% for option in colors %}
-                    <option value="{{ option }}" {% if selected_color2 == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select><br>
-            </div>
+
+    <!-- Comparison Form -->
+    <form method="post" action="/">
+        <div class="scenario">
+            <h2>Scenario 1</h2>
+            <table>
+                <tr>
+                    <td>Odr start:</td>
+                    <td>
+                        <select name="odr_start1">
+                            {% for option in odr_starts %}
+                                <option value="{{ option }}" {% if selected_odr_start == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Start color:</td>
+                    <td>
+                        <select name="start_color1">
+                            {% for option in start_colors %}
+                                <option value="{{ option }}" {% if selected_start_color == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td>ODR Model:</td>
+                    <td>
+                        <select name="odr_model1">
+                            {% for option in odr_models %}
+                                <option value="{{ option }}" {% if selected_odr_model == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td>ODR True/False:</td>
+                    <td>
+                        <select name="odr_true_false1">
+                            {% for option in odr_true_false %}
+                                <option value="{{ option }}" {% if selected_odr_true_false == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Location of High:</td>
+                    <td>
+                        <select name="location_high1">
+                            {% for option in locations_high %}
+                                <option value="{{ option }}" {% if selected_location_high1 == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td>High Level Hit:</td>
+                    <td>
+                        <select name="high_level_hit1">
+                            {% for option in high_level_hits %}
+                                <option value="{{ option }}" {% if selected_high_level_hit1 == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td>High Color:</td>
+                    <td>
+                        <select name="color_high1">
+                            {% for option in colors_high %}
+                                <option value="{{ option }}" {% if selected_color_high1 == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Location of Low:</td>
+                    <td>
+                        <select name="location_low1">
+                            {% for option in locations_low %}
+                                <option value="{{ option }}" {% if selected_location_low1 == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Low Level Hit:</td>
+                    <td>
+                        <select name="low_level_hit1">
+                            {% for option in low_level_hits %}
+                                <option value="{{ option }}" {% if selected_low_level_hit1 == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Low Color:</td>
+                    <td>
+                        <select name="color1">
+                            {% for option in colors %}
+                                <option value="{{ option }}" {% if selected_color1 == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+            </table>
         </div>
-        <button type="submit">Compare Scenarios</button>
-        <button type="button" class="clear-button" onclick="window.location.href='/'">Clear</button>
+
+        <div class="scenario">
+            <h2>Scenario 2</h2>
+            <table>
+                <tr>
+                    <td>Location of High:</td>
+                    <td>
+                        <select name="location_high2">
+                            {% for option in locations_high %}
+                                <option value="{{ option }}" {% if selected_location_high2 == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td>High Level Hit:</td>
+                    <td>
+                        <select name="high_level_hit2">
+                            {% for option in high_level_hits %}
+                                <option value="{{ option }}" {% if selected_high_level_hit2 == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td>High Color:</td>
+                    <td>
+                        <select name="color_high2">
+                            {% for option in colors_high %}
+                                <option value="{{ option }}" {% if selected_color_high2 == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Location of Low:</td>
+                    <td>
+                        <select name="location_low2">
+                            {% for option in locations_low %}
+                                <option value="{{ option }}" {% if selected_location_low2 == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Low Level Hit:</td>
+                    <td>
+                        <select name="low_level_hit2">
+                            {% for option in low_level_hits %}
+                                <option value="{{ option }}" {% if selected_low_level_hit2 == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Low Color:</td>
+                    <td>
+                        <select name="color2">
+                            {% for option in colors %}
+                                <option value="{{ option }}" {% if selected_color2 == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <div style="clear: both; padding-top: 20px;">
+            <input type="submit" value="Compare Scenarios">
+        </div>
     </form>
-    <div class="result">{{ result }}</div>
+
+    <!-- Results -->
+    <h2>Results</h2>
+    <pre>{{ result }}</pre>
 </body>
 </html>
