@@ -6,7 +6,7 @@
     <title>Scenario Comparison</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
-        .scenario { display: inline-block; vertical-align: top; margin-right: 20px; }
+        .scenario, .day-model { display: inline-block; vertical-align: top; margin-right: 20px; }
         table { border-collapse: collapse; width: 100%; max-width: 600px; }
         td, th { padding: 10px; text-align: left; border: 1px solid #ddd; }
         select { width: 200px; padding: 5px; }
@@ -210,7 +210,46 @@
     </form>
 
     <!-- Results -->
-    <h2>Results</h2>
+    <h2>Scenario Results</h2>
     <pre>{{ result }}</pre>
+
+    <!-- Day Model Analysis -->
+    <h1>Day Model Analysis</h1>
+    <form method="post" action="/day_model">
+        <div class="day-model">
+            <h2>Day Model Filters</h2>
+            <table>
+                {% for day in days %}
+                    <tr>
+                        <td>{{ day }} Model:</td>
+                        <td>
+                            <select name="{{ day | lower | replace(' ', '_') }}_model">
+                                {% for option in model_options %}
+                                    <option value="{{ option }}" {% if selected_day_models[day] == option %}selected{% endif %}>{{ option }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>{{ day }} Role:</td>
+                        <td>
+                            <select name="{{ day | lower | replace(' ', '_') }}_role">
+                                {% for option in week_role_options %}
+                                    <option value="{{ option }}" {% if selected_day_roles[day] == option %}selected{% endif %}>{{ option }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </table>
+        </div>
+        <div style="clear: both; padding-top: 20px;">
+            <input type="submit" value="Compute Day Model Probabilities">
+        </div>
+    </form>
+
+    <!-- Day Model Results -->
+    <h2>Day Model Results</h2>
+    <pre>{{ day_model_result }}</pre>
 </body>
 </html>
