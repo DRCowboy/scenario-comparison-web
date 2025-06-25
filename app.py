@@ -1,4 +1,5 @@
-from flask import Flask, render_template, request
+]from flask import Flask, render_template, request
+from werkzeug.utils import secure_filename
 import pandas as pd
 import os
 import logging
@@ -6,20 +7,24 @@ from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
+# Set file upload size limit (16 MB)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-# Define paths using relative paths
-BASE_DIR = os.path.dirname(__file__)
-excel_file_path = os.path.join(BASE_DIR, "data", "DDR_Predictor.xlsx")
-csv_path = os.path.join(BASE_DIR, "data", "CLhistorical5m.csv")
-output_path = os.path.join(BASE_DIR, "data", "day_model_probabilities.txt")
+# Define paths using environment variables for Render compatibility
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+excel_file_path = os.getenv("RENDER_EXCEL_PATH", os.path.join(DATA_DIR, "DDR_Predictor.xlsx"))
+csv_path = os.getenv("RENDER_CSV_PATH", os.path.join(DATA_DIR, "CLhistorical5m.csv"))
+output_path = os.getenv("RENDER_OUTPUT_PATH", os.path.join(DATA_DIR, "day_model_probabilities.txt"))
 
 # Ensure data directory exists
-os.makedirs(os.path.join(BASE_DIR, "data"), exist_ok=True)
+os.makedirs(DATA_DIR, exist_ok=True)
 
-# Level hierarchy for reference (simplified usage)
+# Level hierarchy for reference
 LEVEL_HIERARCHY = {
     "Min": ["Min"],
     "Min-Med": ["Min-Med", "Min"],
@@ -117,7 +122,6 @@ def load_csv_file():
     try:
         df_day_model = pd.read_csv(csv_path, parse_dates=['time'])
         logger.debug(f"CSV loaded. Rows: {len(df_day_model)}, Columns: {df_day_model.columns.tolist()}")
-        logger.debug(f"Sample data:\n{df_day_model.head().to_string()}")
     except Exception as e:
         logger.error(f"Error loading CSV: {e}")
         return False
@@ -154,7 +158,7 @@ def get_week_data(df):
                 'time': 'first'
             }).reset_index()
             logger.debug(f"Week {week_start}: {len(week_days)} days, Days={week_days['time'].dt.day_name().tolist()}")
-            if len(week_days) >= 2:  # Need at least 2 days for models
+            if len(week_days) >= 2:
                 week_days['day_of_week'] = pd.to_datetime(week_days['time']).dt.day_name()
                 high_day_idx = week_days['high'].idxmax()
                 high_day = week_days.loc[high_day_idx, 'day_of_week']
@@ -236,7 +240,6 @@ def compute_day_model_probabilities(conditions):
                     total_valid += 1
         model_probs = {model: count / total_valid if total_valid > 0 else 0 for model, count in model_counts.items()}
     
-    # Find the first day with HOW or LOW role
     role_day = None
     role_type = None
     for day, cond in conditions.items():
@@ -291,7 +294,6 @@ def calculate_scenario_probability(odr_start, start_color, color, odr_model, odr
     if df is None or total_rows == 0:
         logger.warning("No data available for probability calculation")
         return 0, 0.0
-    
     filtered_df = df.copy()
     
     if num_columns == 11 and odr_start != "Any":
@@ -354,7 +356,6 @@ def calculate_target_probabilities(odr_start, start_color, color, odr_model, odr
     
     logger.debug(f"Filtered rows: {len(filtered_df)}, filters={{odr_start={odr_start}, color={color}, high_level_hit={high_level_hit}}}")
     
-    # Calculate most probable Location of High and Location of Low combination
     if len(filtered_df) > 0:
         loc_pairs = filtered_df.groupby(['Location of High', 'Location of Low']).size().reset_index(name='counts')
         if not loc_pairs.empty:
@@ -362,7 +363,7 @@ def calculate_target_probabilities(odr_start, start_color, color, odr_model, odr
             most_common_high = max_pair['Location of High']
             most_common_low = max_pair['Location of Low']
             total_pairs = len(filtered_df)
-            prob_high_low = (max_pair['counts'] / total_pairs) * 100 if total_pairs > 0 else 0
+            prob_high_low = (max_pair['counts'] / total_pairs) * NOR if total_pairs > 0 else 0
             location_summary = f"{prob_high_low:.1f}% High {most_common_high}-Low {most_common_low}"
         else:
             location_summary = "0.0% High Unknown-Low Unknown"
@@ -374,16 +375,13 @@ def calculate_target_probabilities(odr_start, start_color, color, odr_model, odr
     if matching_rows == 0:
         return [location_summary, "No matching data found for this scenario."]
 
-    # Calculate target probabilities
     output = [location_summary]
-    # Calculate for High Level Hit
     high_level_counts = filtered_df['High Level Hit'].value_counts().sort_index()
     total_high = high_level_counts.sum()
     for level, count in high_level_counts.items():
         percentage = (count / total_high) * 100 if total_high > 0 else 0
         output.append(f"High {level}: {percentage:.1f}%")
     
-    # Calculate for Low Level Hit
     low_level_counts = filtered_df['Low Level Hit'].value_counts().sort_index()
     total_low = low_level_counts.sum()
     for level, count in low_level_counts.items():
@@ -443,6 +441,7 @@ def upload_file():
     
     if file and file.filename.endswith('.xlsx'):
         try:
+            filename = secure_filename(file.filename)
             file.save(excel_file_path)
             if load_excel_file():
                 return render_template(
@@ -514,7 +513,7 @@ def upload_file():
     else:
         return render_template(
             "index.html",
-            error="Invalid file format. Please upload an .xlsx file.",
+            error="Invalid file afla format. Please upload an .xlsx file.",
             odr_starts=["Any"] + odr_starts,
             start_colors=["Any"] + start_colors,
             odr_models=["Any"] + odr_models,
@@ -539,16 +538,13 @@ def index():
     logger.debug(f"Request method: {request.method}, Form data: {request.form.to_dict()}")
     
     if request.method == "POST" and "file" not in request.form:
-        # Get shared inputs from Scenario 1 with default "Any" if not present
         selected_odr_start = request.form.get("odr_start1", "Any")
         selected_start_color = request.form.get("start_color1", "Any")
         selected_odr_model = request.form.get("odr_model1", "Any")
         selected_odr_true_false = request.form.get("odr_true_false1", "Any")
         
-        # Log received form data for debugging
-        logger.debug(f"Received form data: odr_start1={request.form.get('odr_start1')}, odr_true_false1={request.form.get('odr_true_false1')}")
+        logger.debug(f"Shared inputs: selected_odr_start={selected_odr_start}, selected_odr_model={selected_odr_model}, selected_odr_true_false={selected_odr_true_false}")
 
-        # Get Scenario 1 specific inputs
         location_high1 = request.form.get("location_high1", "Any")
         high_level_hit1 = request.form.get("high_level_hit1", "Any")
         color_high1 = request.form.get("color_high1", "Any")
@@ -556,7 +552,6 @@ def index():
         low_level_hit1 = request.form.get("low_level_hit1", "Any")
         color1 = request.form.get("color1", "Any")
 
-        # Get Scenario 2 specific inputs
         location_high2 = request.form.get("location_high2", "Any")
         high_level_hit2 = request.form.get("high_level_hit2", "Any")
         color_high2 = request.form.get("color_high2", "Any")
@@ -564,11 +559,9 @@ def index():
         low_level_hit2 = request.form.get("low_level_hit2", "Any")
         color2 = request.form.get("color2", "Any")
 
-        logger.debug(f"Shared inputs: selected_odr_start={selected_odr_start}, selected_odr_model={selected_odr_model}, selected_odr_true_false={selected_odr_true_false}")
         logger.debug(f"Scenario 1 inputs: location_high1={location_high1}, high_level_hit1={high_level_hit1}, color1={color1}")
         logger.debug(f"Scenario 2 inputs: location_high2={location_high2}, high_level_hit2={high_level_hit2}, color2={color2}")
 
-        # Calculate probabilities
         matching_rows1, prob1 = calculate_scenario_probability(
             selected_odr_start, selected_start_color, color1, selected_odr_model, selected_odr_true_false,
             location_high1, high_level_hit1, color_high1, location_low1, low_level_hit1
@@ -578,12 +571,10 @@ def index():
             location_high2, high_level_hit2, color_high2, location_low2, low_level_hit2
         )
 
-        # Normalize probabilities
-        total_prob = prob1 + prob2 if prob1 + prob2 > 0 else 1  # Avoid division by zero
+        total_prob = prob1 + prob2 if prob1 + prob2 > 0 else 1
         normalized_prob1 = (prob1 / total_prob) * 100 if total_prob > 0 else 0.0
         normalized_prob2 = (prob2 / total_prob) * 100 if total_prob > 0 else 0.0
 
-        # Calculate target probabilities
         scenario1_lines = calculate_target_probabilities(
             selected_odr_start, selected_start_color, color1, selected_odr_model, selected_odr_true_false,
             location_high1, high_level_hit1, color_high1, location_low1, low_level_hit1
@@ -593,7 +584,6 @@ def index():
             location_high2, high_level_hit2, color_high2, location_low2, low_level_hit2
         )
 
-        # Format output with proper variable substitution
         output = [
             f"{'Scenario 1:':<50} {'Scenario 2:':>50}",
             f"{'Scenario 1: ' + f'{normalized_prob1:.1f}% chance':<50} {'Scenario 2: ' + f'{normalized_prob2:.1f}% chance':>50}",
@@ -616,7 +606,6 @@ def index():
             low_level_hits=["Any"] + low_level_hits,
             colors=["Any"] + colors,
             result="\n".join(output),
-            # Pass selected values
             selected_odr_start=selected_odr_start,
             selected_start_color=selected_start_color,
             selected_odr_model=selected_odr_model,
@@ -699,3 +688,7 @@ def day_model():
         selected_day_roles=selected_day_roles,
         day_model_result=day_model_result
     )
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
