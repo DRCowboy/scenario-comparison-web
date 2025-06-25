@@ -19,7 +19,7 @@ output_path = os.path.join(BASE_DIR, "data", "day_model_probabilities.txt")
 # Ensure data directory exists
 os.makedirs(os.path.join(BASE_DIR, "data"), exist_ok=True)
 
-# Level hierarchy for reference (simplified usage)
+# Level hierarchy for reference (used only in target probabilities)
 LEVEL_HIERARCHY = {
     "Min": ["Min"],
     "Min-Med": ["Min-Med", "Min"],
@@ -305,15 +305,15 @@ def calculate_scenario_probability(odr_start, start_color, color, odr_model, odr
     if location_high != "Any":
         filtered_df = filtered_df[filtered_df["Location of High"] == location_high]
     if high_level_hit != "Any":
-        matching_levels = LEVEL_HIERARCHY.get(high_level_hit, [high_level_hit])
-        filtered_df = filtered_df[filtered_df["High Level Hit"].isin(matching_levels)]
+        # Use exact matching (no hierarchy) for input filtering
+        filtered_df = filtered_df[filtered_df["High Level Hit"] == high_level_hit]
     if color_high != "Any":
         filtered_df = filtered_df[filtered_df["High color"] == color_high]
     if location_low != "Any":
         filtered_df = filtered_df[filtered_df["Location of Low"] == location_low]
     if low_level_hit != "Any":
-        matching_levels = LEVEL_HIERARCHY.get(low_level_hit, [low_level_hit])
-        filtered_df = filtered_df[filtered_df["Low Level Hit"].isin(matching_levels)]
+        # Use exact matching (no hierarchy) for input filtering
+        filtered_df = filtered_df[filtered_df["Low Level Hit"] == low_level_hit]
     if color != "Any":
         filtered_df = filtered_df[filtered_df["Low color"] == color]
     
@@ -340,15 +340,15 @@ def calculate_target_probabilities(odr_start, start_color, color, odr_model, odr
     if location_high != "Any":
         filtered_df = filtered_df[filtered_df["Location of High"] == location_high]
     if high_level_hit != "Any":
-        matching_levels = LEVEL_HIERARCHY.get(high_level_hit, [high_level_hit])
-        filtered_df = filtered_df[filtered_df["High Level Hit"].isin(matching_levels)]
+        # Use exact matching (no hierarchy) for input filtering
+        filtered_df = filtered_df[filtered_df["High Level Hit"] == high_level_hit]
     if color_high != "Any":
         filtered_df = filtered_df[filtered_df["High color"] == color_high]
     if location_low != "Any":
         filtered_df = filtered_df[filtered_df["Location of Low"] == location_low]
     if low_level_hit != "Any":
-        matching_levels = LEVEL_HIERARCHY.get(low_level_hit, [low_level_hit])
-        filtered_df = filtered_df[filtered_df["Low Level Hit"].isin(matching_levels)]
+        # Use exact matching (no hierarchy) for input filtering
+        filtered_df = filtered_df[filtered_df["Low Level Hit"] == low_level_hit]
     if color != "Any":
         filtered_df = filtered_df[filtered_df["Low color"] == color]
     
@@ -374,20 +374,22 @@ def calculate_target_probabilities(odr_start, start_color, color, odr_model, odr
     if matching_rows == 0:
         return [location_summary, "No matching data found for this scenario."]
 
-    # Calculate target probabilities
+    # Calculate target probabilities using hierarchy
     output = [location_summary]
     # Calculate for High Level Hit
-    high_level_counts = filtered_df['High Level Hit'].value_counts().sort_index()
-    total_high = high_level_counts.sum()
-    for level, count in high_level_counts.items():
-        percentage = (count / total_high) * 100 if total_high > 0 else 0
+    for level in high_level_hits:  # Iterate through possible levels
+        matching_levels = LEVEL_HIERARCHY.get(level, [level])  # Apply hierarchy
+        high_level_count = filtered_df[filtered_df['High Level Hit'].isin(matching_levels)].shape[0]
+        total_high = len(filtered_df)
+        percentage = (high_level_count / total_high) * 100 if total_high > 0 else 0
         output.append(f"High {level}: {percentage:.1f}%")
     
     # Calculate for Low Level Hit
-    low_level_counts = filtered_df['Low Level Hit'].value_counts().sort_index()
-    total_low = low_level_counts.sum()
-    for level, count in low_level_counts.items():
-        percentage = (count / total_low) * 100 if total_low > 0 else 0
+    for level in low_level_hits:  # Iterate through possible levels
+        matching_levels = LEVEL_HIERARCHY.get(level, [level])  # Apply hierarchy
+        low_level_count = filtered_df[filtered_df['Low Level Hit'].isin(matching_levels)].shape[0]
+        total_low = len(filtered_df)
+        percentage = (low_level_count / total_low) * 100 if total_low > 0 else 0
         output.append(f"Low {level}: {percentage:.1f}%")
 
     return output
@@ -699,3 +701,6 @@ def day_model():
         selected_day_roles=selected_day_roles,
         day_model_result=day_model_result
     )
+
+if __name__ == "__main__":
+    app.run(debug=True)
