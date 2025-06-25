@@ -5712,3 +5712,33 @@ Day 2: 5.45%
 Day 3: 16.00%
 Day 4: 25.82%
 Day 5: 32.36%
+
+==================================================
+Conditions (as of June 24, 2025, 07:54 PM ):
+Day 2: Model=Any, Role=Low of Week (LOW)
+
+Model Probabilities for Day 3:
+Upside: 75.36%
+Downside: 0.00%
+Inside: 24.64%
+Outside: 0.00%
+
+High Day Probabilities:
+Day 3: 11.59%
+Day 4: 27.54%
+Day 5: 26.09%
+
+==================================================
+Conditions (as of June 24, 2025, 07:54 PM ):
+Day 2: Model=Any, Role=High of Week (HOW)
+
+Model Probabilities for Day 3:
+Upside: 0.00%
+Downside: 80.31%
+Inside: 19.69%
+Outside: 0.00%
+
+Low Day Probabilities:
+Day 3: 11.02%
+Day 4: 29.13%
+Day 5: 28.35%
