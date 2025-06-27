@@ -206,6 +206,7 @@
 
         <div style="clear: both; padding-top: 20px;">
             <input type="submit" value="Compare Scenarios">
+            <input type="button" value="Clear All" onclick="clearAllForms()" style="margin-left: 10px;">
         </div>
     </form>
 
@@ -215,7 +216,8 @@
 
     <!-- Day Model Analysis -->
     <h1>Day Model Analysis</h1>
-    <form method="post" action="/day_model">
+    <form method="post" action="/day_model" id="dayModelForm">
+        <input type="hidden" name="scenario_result" value="{{ result }}">
         <div class="day-model">
             <h2>Day Model Filters</h2>
             <table>
@@ -240,6 +242,18 @@
                             </select>
                         </td>
                     </tr>
+                    {% if day == 'Day 1' %}
+                    <tr>
+                        <td>Wed ODR:</td>
+                        <td>
+                            <select name="day_1_week_wed_odr">
+                                {% for option in week_wed_odr_options %}
+                                    <option value="{{ option }}" {% if selected_day_week_wed_odrs['Day 1'] == option %}selected{% endif %}>{{ option }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                    </tr>
+                    {% endif %}
                 {% endfor %}
             </table>
         </div>
@@ -251,5 +265,25 @@
     <!-- Day Model Results -->
     <h2>Day Model Results</h2>
     <pre>{{ day_model_result }}</pre>
+
+    <script>
+        function clearAllForms() {
+            // Clear scenario comparison form
+            document.querySelector('form[action="/"]').reset();
+            
+            // Clear day model form
+            document.getElementById('dayModelForm').reset();
+            
+            // Submit the clear action to reset results
+            fetch('/clear', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                }
+            }).then(() => {
+                window.location.reload();
+            });
+        }
+    </script>
 </body>
 </html>
