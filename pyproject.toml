@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "scenario-comparison-web"
 version = "1.0.0"
 description = "Trading data analysis web application"
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.13"
 dependencies = [
     "Flask==3.0.0",
     "pandas==2.2.0",
