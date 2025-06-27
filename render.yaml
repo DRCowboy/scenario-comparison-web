@@ -2,9 +2,9 @@ services:
   - type: web
     name: scenario-comparison-web
     env: python
-    buildCommand: pip install --no-cache-dir --prefer-binary -r requirements.txt
+    buildCommand: pip install --no-cache-dir --prefer-binary --only-binary=all -r requirements.txt
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1
     envVars:
       - key: PYTHON_VERSION
-        value: 3.8.18
+        value: 3.9.18
     plan: free 
