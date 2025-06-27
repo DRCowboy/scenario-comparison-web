@@ -3,5 +3,5 @@ services:
     name: scenario-comparison-web
     env: python
     plan: free
-    buildCommand: pip install --only-binary=all -r requirements.txt
+    buildCommand: pip install setuptools wheel && pip install -r requirements.txt
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 
