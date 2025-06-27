@@ -6,3 +6,4 @@ Werkzeug==3.0.1
 numpy==2.0.2
 setuptools>=65.0.0
 wheel>=0.38.0
+pytz>=2023.3

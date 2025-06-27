@@ -4,6 +4,7 @@ import pandas as pd
 import os
 import logging
 from datetime import datetime, timedelta
+import pytz
 
 app = Flask(__name__)
 
@@ -208,25 +209,51 @@ def identify_day_type(day1_high, day1_low, day2_high, day2_low):
 # Process weekly data for day model analysis
 def get_week_data(df):
     try:
-        df['date'] = df['time'].dt.date
-        # Align week_start to Tuesday (dayofweek=1)
-        df['week_start'] = df['time'] - pd.to_timedelta((df['time'].dt.dayofweek - 1) % 7, unit='D')
+        # Convert timezone to NY time if not already
+        if df['time'].dt.tz is None:
+            # Assume UTC if no timezone, convert to NY
+            df['time'] = df['time'].dt.tz_localize('UTC').dt.tz_convert('America/New_York')
+        elif df['time'].dt.tz != pytz.timezone('America/New_York'):
+            df['time'] = df['time'].dt.tz_convert('America/New_York')
+        
+        # Create trading session day boundaries
+        # Each trading day starts at 9:30 AM NY time and ends at the close of 9:25 AM NY time candle next day
+        def get_trading_date(x):
+            if pd.isna(x) or not isinstance(x, pd.Timestamp):
+                return pd.NaT
+            return x.date() if x.time() >= pd.Timestamp('09:30').time() else (x - pd.Timedelta(days=1)).date()
+        
+        df['trading_date'] = df['time'].apply(get_trading_date)
+        
+        # Align week_start to Tuesday (dayofweek=1) based on trading dates
+        df['week_start'] = pd.to_datetime(df['trading_date']) - pd.to_timedelta(
+            (pd.to_datetime(df['trading_date']).dt.dayofweek - 1) % 7, unit='D'
+        )
         df['week_start'] = df['week_start'].dt.date
+        
         weekly_data = []
         for week_start, week_group in df.groupby('week_start'):
-            week_days = week_group.groupby('date').agg({
+            # Group by trading_date instead of calendar date
+            week_days = week_group.groupby('trading_date').agg({
                 'high': 'max',
                 'low': 'min',
                 'time': 'first'
             }).reset_index()
+            
+            # Rename trading_date to date for compatibility
+            week_days = week_days.rename(columns={'trading_date': 'date'})
+            
             logger.debug(f"Week {week_start}: {len(week_days)} days, Days={week_days['time'].dt.day_name().tolist()}")
+            
             if len(week_days) >= 2:
                 week_days['day_of_week'] = pd.to_datetime(week_days['time']).dt.day_name()
                 high_day_idx = week_days['high'].idxmax()
                 high_day = week_days.loc[high_day_idx, 'day_of_week']
                 low_day_idx = week_days['low'].idxmin()
                 low_day = week_days.loc[low_day_idx, 'day_of_week']
+                
                 logger.debug(f"Week {week_start}: High day={high_day}, Low day={low_day}, Days={week_days['time'].tolist()}")
+                
                 week_days['model'] = 'Undefined'
                 for i in range(1, len(week_days)):
                     day1 = week_days.iloc[i-1]
@@ -234,13 +261,16 @@ def get_week_data(df):
                     week_days.loc[i, 'model'] = identify_day_type(
                         day1['high'], day1['low'], day2['high'], day2['low']
                     )
+                
                 # Attach Week Wed ODR value
                 week_wed_odr_value = "Unknown"
                 if df_wed_odr is not None:
                     match = df_wed_odr[df_wed_odr['Week Start'] == week_start]
                     if isinstance(match, pd.DataFrame) and not match.empty:
                         week_wed_odr_value = match['Week Wed ODR'].values[0]
+                
                 print(f"week_start: {week_start}, Week Wed ODR in df_wed_odr: {df_wed_odr[df_wed_odr['Week Start'] == week_start]['Week Wed ODR'].tolist() if df_wed_odr is not None else 'No data'}")
+                
                 weekly_data.append({
                     'week_start': week_start,
                     'days': week_days,
@@ -248,6 +278,7 @@ def get_week_data(df):
                     'low_day': low_day,
                     'week_wed_odr': week_wed_odr_value
                 })
+        
         # Log low day distribution
         low_day_counts = {}
         for week in weekly_data:
@@ -256,6 +287,7 @@ def get_week_data(df):
         logger.debug(f"Low day distribution: {low_day_counts}")
         logger.debug(f"Total valid weeks: {len(weekly_data)}")
         return weekly_data
+        
     except Exception as e:
         logger.error(f"Error processing weekly data: {e}")
         return []
@@ -313,9 +345,9 @@ def compute_day_model_probabilities(conditions):
     if not matching_weeks:
         return f"No historical weeks match the selected conditions: {conditions}"
     
-    # After filtering, always show model probabilities for Day 2-5
+    # After filtering, always show model probabilities for Day 1-5
     model_probs_by_day = {}
-    for day_num in range(1, 5):  # Day 2 to Day 5
+    for day_num in range(0, 5):  # Day 1 to Day 5
         model_counts = {'Upside': 0, 'Downside': 0, 'Inside': 0, 'Outside': 0}
         total_valid = 0
         for week in matching_weeks:
@@ -333,8 +365,8 @@ def compute_day_model_probabilities(conditions):
         week_wed_odr_str = f", Week Wed ODR={cond['week_wed_odr']}" if day == 'Day 1' and 'week_wed_odr' in cond else ""
         result += f"{day}: Model={cond['model']}, Role={cond['role']}{week_wed_odr_str}\n"
     result += f"\nNumber of historical weeks matching conditions: {len(matching_weeks)}\n"
-    result += f"\nProbabilities for Day 2-5:\n"
-    for day in ["Day 2", "Day 3", "Day 4", "Day 5"]:
+    result += f"\nProbabilities for Day 1-5:\n"
+    for day in ["Day 1", "Day 2", "Day 3", "Day 4", "Day 5"]:
         result += f"{day}:\n"
         for model, prob in model_probs_by_day[day].items():
             result += f"  {model}: {prob:.2%}\n"
