@@ -9,7 +9,7 @@ description = "Trading data analysis web application"
 requires-python = ">=3.13"
 dependencies = [
     "Flask==3.0.0",
-    "pandas==2.2.0",
+    "pandas==2.1.4",
     "openpyxl==3.1.2",
     "gunicorn==21.2.0",
     "Werkzeug==3.0.1",
