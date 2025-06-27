@@ -1,19 +1,19 @@
 [build-system]
-requires = ["setuptools>=65.0.0", "wheel"]
+requires = ["setuptools>=68.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "scenario-comparison-web"
 version = "1.0.0"
 description = "Trading data analysis web application"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.13,<3.14"
 dependencies = [
-    "Flask==2.3.3",
-    "pandas==2.1.4",
+    "Flask==3.0.0",
+    "pandas==2.2.0",
     "openpyxl==3.1.2",
     "gunicorn==21.2.0",
-    "Werkzeug==2.3.7",
-    "numpy==1.26.2",
+    "Werkzeug==3.0.1",
+    "numpy==1.26.4",
 ]
 
 [tool.setuptools]
