@@ -9,85 +9,223 @@
         .section-title { margin-top: 2rem; margin-bottom: 1rem; }
         .form-section { background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem; }
         .result-block { background: #e9ecef; padding: 1rem; border-radius: 8px; margin-top: 1rem; }
+        pre { white-space: pre-wrap; word-wrap: break-word; }
     </style>
 </head>
 <body>
 <div class="container">
     <h1 class="mt-4 mb-4">Scenario Comparison & Day Model Analysis</h1>
 
+    <!-- File Upload Section -->
+    <h2 class="section-title">Upload Data File</h2>
+    <form method="POST" enctype="multipart/form-data" action="/upload">
+        <div class="form-section">
+            <div class="mb-3">
+                <label for="file" class="form-label">Select Excel File (.xlsx)</label>
+                <input type="file" class="form-control" id="file" name="file" accept=".xlsx">
+            </div>
+            <button type="submit" class="btn btn-primary">Upload File</button>
+        </div>
+    </form>
+
     <!-- Scenario Comparison Section -->
     <h2 class="section-title">Scenario Comparison</h2>
-    <form method="POST">
+    <form method="POST" action="/">
         <div class="row form-section">
             <div class="col-md-6">
                 <h5>Scenario 1</h5>
-                {% for col, options in scenario_dropdowns.items() %}
-                    <div class="mb-2">
-                        <label for="scenario1_{{ col }}" class="form-label">{{ col }}</label>
-                        <select class="form-select" name="scenario1_{{ col }}" id="scenario1_{{ col }}">
-                            {% for opt in options %}
-                                <option value="{{ opt }}" {% if scenario1_filters.get(col, 'Any') == opt %}selected{% endif %}>{{ opt }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                {% endfor %}
+                <div class="mb-2">
+                    <label for="odr_start1" class="form-label">ODR Start</label>
+                    <select class="form-select" name="odr_start1" id="odr_start1">
+                        {% for opt in odr_starts %}
+                            <option value="{{ opt }}" {% if selected_odr_start == opt %}selected{% endif %}>{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label for="start_color1" class="form-label">Start Color</label>
+                    <select class="form-select" name="start_color1" id="start_color1">
+                        {% for opt in start_colors %}
+                            <option value="{{ opt }}" {% if selected_start_color == opt %}selected{% endif %}>{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label for="odr_model1" class="form-label">ODR Model</label>
+                    <select class="form-select" name="odr_model1" id="odr_model1">
+                        {% for opt in odr_models %}
+                            <option value="{{ opt }}" {% if selected_odr_model == opt %}selected{% endif %}>{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label for="odr_true_false1" class="form-label">ODR True/False</label>
+                    <select class="form-select" name="odr_true_false1" id="odr_true_false1">
+                        {% for opt in odr_true_false %}
+                            <option value="{{ opt }}" {% if selected_odr_true_false == opt %}selected{% endif %}>{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label for="location_low1" class="form-label">Location of Low</label>
+                    <select class="form-select" name="location_low1" id="location_low1">
+                        {% for opt in locations_low %}
+                            <option value="{{ opt }}" {% if selected_location_low1 == opt %}selected{% endif %}>{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label for="low_level_hit1" class="form-label">Low Level Hit</label>
+                    <select class="form-select" name="low_level_hit1" id="low_level_hit1">
+                        {% for opt in low_level_hits %}
+                            <option value="{{ opt }}" {% if selected_low_level_hit1 == opt %}selected{% endif %}>{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label for="color1" class="form-label">Low Color</label>
+                    <select class="form-select" name="color1" id="color1">
+                        {% for opt in colors %}
+                            <option value="{{ opt }}" {% if selected_color1 == opt %}selected{% endif %}>{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label for="location_high1" class="form-label">Location of High</label>
+                    <select class="form-select" name="location_high1" id="location_high1">
+                        {% for opt in locations_high %}
+                            <option value="{{ opt }}" {% if selected_location_high1 == opt %}selected{% endif %}>{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label for="high_level_hit1" class="form-label">High Level Hit</label>
+                    <select class="form-select" name="high_level_hit1" id="high_level_hit1">
+                        {% for opt in high_level_hits %}
+                            <option value="{{ opt }}" {% if selected_high_level_hit1 == opt %}selected{% endif %}>{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label for="color_high1" class="form-label">High Color</label>
+                    <select class="form-select" name="color_high1" id="color_high1">
+                        {% for opt in colors_high %}
+                            <option value="{{ opt }}" {% if selected_color_high1 == opt %}selected{% endif %}>{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
             </div>
             <div class="col-md-6">
                 <h5>Scenario 2</h5>
-                {% for col, options in scenario_dropdowns.items() %}
-                    <div class="mb-2">
-                        <label for="scenario2_{{ col }}" class="form-label">{{ col }}</label>
-                        <select class="form-select" name="scenario2_{{ col }}" id="scenario2_{{ col }}">
-                            {% for opt in options %}
-                                <option value="{{ opt }}" {% if scenario2_filters.get(col, 'Any') == opt %}selected{% endif %}>{{ opt }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                {% endfor %}
+                <div class="mb-2">
+                    <label for="location_low2" class="form-label">Location of Low</label>
+                    <select class="form-select" name="location_low2" id="location_low2">
+                        {% for opt in locations_low %}
+                            <option value="{{ opt }}" {% if selected_location_low2 == opt %}selected{% endif %}>{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label for="low_level_hit2" class="form-label">Low Level Hit</label>
+                    <select class="form-select" name="low_level_hit2" id="low_level_hit2">
+                        {% for opt in low_level_hits %}
+                            <option value="{{ opt }}" {% if selected_low_level_hit2 == opt %}selected{% endif %}>{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label for="color2" class="form-label">Low Color</label>
+                    <select class="form-select" name="color2" id="color2">
+                        {% for opt in colors %}
+                            <option value="{{ opt }}" {% if selected_color2 == opt %}selected{% endif %}>{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label for="location_high2" class="form-label">Location of High</label>
+                    <select class="form-select" name="location_high2" id="location_high2">
+                        {% for opt in locations_high %}
+                            <option value="{{ opt }}" {% if selected_location_high2 == opt %}selected{% endif %}>{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label for="high_level_hit2" class="form-label">High Level Hit</label>
+                    <select class="form-select" name="high_level_hit2" id="high_level_hit2">
+                        {% for opt in high_level_hits %}
+                            <option value="{{ opt }}" {% if selected_high_level_hit2 == opt %}selected{% endif %}>{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label for="color_high2" class="form-label">High Color</label>
+                    <select class="form-select" name="color_high2" id="color_high2">
+                        {% for opt in colors_high %}
+                            <option value="{{ opt }}" {% if selected_color_high2 == opt %}selected{% endif %}>{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
             </div>
             <div class="col-12 mt-3">
-                <button type="submit" name="scenario1_submit" class="btn btn-primary">Compare Scenarios</button>
+                <button type="submit" class="btn btn-primary">Compare Scenarios</button>
             </div>
         </div>
     </form>
-    {% if scenario_result %}
+    {% if result %}
         <div class="result-block">
-            <h6>Results</h6>
-            <div>{{ scenario_result|safe }}</div>
-            <div>Total rows in dataset: {{ total_rows }}</div>
+            <h6>Scenario Comparison Results</h6>
+            <pre>{{ result }}</pre>
         </div>
     {% endif %}
 
     <!-- Day Model Analysis Section -->
     <h2 class="section-title">Day Model Analysis</h2>
-    <form method="POST">
+    <form method="POST" action="/day_model">
+        <!-- Hidden fields to preserve scenario comparison values -->
+        <input type="hidden" name="scenario_result" value="{{ result or '' }}">
+        <input type="hidden" name="selected_odr_start" value="{{ selected_odr_start or 'Any' }}">
+        <input type="hidden" name="selected_start_color" value="{{ selected_start_color or 'Any' }}">
+        <input type="hidden" name="selected_odr_model" value="{{ selected_odr_model or 'Any' }}">
+        <input type="hidden" name="selected_odr_true_false" value="{{ selected_odr_true_false or 'Any' }}">
+        <input type="hidden" name="selected_location_low1" value="{{ selected_location_low1 or 'Any' }}">
+        <input type="hidden" name="selected_low_level_hit1" value="{{ selected_low_level_hit1 or 'Any' }}">
+        <input type="hidden" name="selected_color1" value="{{ selected_color1 or 'Any' }}">
+        <input type="hidden" name="selected_location_high1" value="{{ selected_location_high1 or 'Any' }}">
+        <input type="hidden" name="selected_high_level_hit1" value="{{ selected_high_level_hit1 or 'Any' }}">
+        <input type="hidden" name="selected_color_high1" value="{{ selected_color_high1 or 'Any' }}">
+        <input type="hidden" name="selected_location_low2" value="{{ selected_location_low2 or 'Any' }}">
+        <input type="hidden" name="selected_low_level_hit2" value="{{ selected_low_level_hit2 or 'Any' }}">
+        <input type="hidden" name="selected_color2" value="{{ selected_color2 or 'Any' }}">
+        <input type="hidden" name="selected_location_high2" value="{{ selected_location_high2 or 'Any' }}">
+        <input type="hidden" name="selected_high_level_hit2" value="{{ selected_high_level_hit2 or 'Any' }}">
+        <input type="hidden" name="selected_color_high2" value="{{ selected_color_high2 or 'Any' }}">
+        
         <div class="row form-section">
-            {% set days = ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5'] %}
             {% for day in days %}
                 <div class="col-md-2">
                     <h6>{{ day }}</h6>
                     <div class="mb-2">
-                        <label for="{{ day }}_model" class="form-label">Model</label>
-                        <select class="form-select" name="{{ day }}_model" id="{{ day }}_model">
-                            {% for opt in day_model_dropdowns['model'] %}
-                                <option value="{{ opt }}" {% if day_model_filters.get(day, {}).get('model', 'Any') == opt %}selected{% endif %}>{{ opt }}</option>
+                        <label for="{{ day.lower().replace(' ', '_') }}_model" class="form-label">Model</label>
+                        <select class="form-select" name="{{ day.lower().replace(' ', '_') }}_model" id="{{ day.lower().replace(' ', '_') }}_model">
+                            {% for opt in model_options %}
+                                <option value="{{ opt }}" {% if selected_day_models.get(day, 'Any') == opt %}selected{% endif %}>{{ opt }}</option>
                             {% endfor %}
                         </select>
                     </div>
                     <div class="mb-2">
-                        <label for="{{ day }}_role" class="form-label">Role</label>
-                        <select class="form-select" name="{{ day }}_role" id="{{ day }}_role">
-                            {% for opt in day_model_dropdowns['role'] %}
-                                <option value="{{ opt }}" {% if day_model_filters.get(day, {}).get('role', 'Any') == opt %}selected{% endif %}>{{ opt }}</option>
+                        <label for="{{ day.lower().replace(' ', '_') }}_role" class="form-label">Role</label>
+                        <select class="form-select" name="{{ day.lower().replace(' ', '_') }}_role" id="{{ day.lower().replace(' ', '_') }}_role">
+                            {% for opt in week_role_options %}
+                                <option value="{{ opt }}" {% if selected_day_roles.get(day, 'Any') == opt %}selected{% endif %}>{{ opt }}</option>
                             {% endfor %}
                         </select>
                     </div>
-                    {% if day == 'Day 2' %}
+                    {% if day == 'Day 1' %}
                     <div class="mb-2">
-                        <label for="Day 2_tf" class="form-label">True/False</label>
-                        <select class="form-select" name="Day 2_tf" id="Day 2_tf">
-                            {% for opt in day_model_dropdowns['tf'] %}
-                                <option value="{{ opt }}" {% if day_model_filters.get('Day 2', {}).get('tf', 'Any') == opt %}selected{% endif %}>{{ opt }}</option>
+                        <label for="day_1_week_wed_odr" class="form-label">Week Wed ODR</label>
+                        <select class="form-select" name="day_1_week_wed_odr" id="day_1_week_wed_odr">
+                            {% for opt in week_wed_odr_options %}
+                                <option value="{{ opt }}" {% if selected_day_week_wed_odrs.get(day, 'Any') == opt %}selected{% endif %}>{{ opt }}</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -95,19 +233,26 @@
                 </div>
             {% endfor %}
             <div class="col-12 mt-3">
-                <button type="submit" name="day_model_submit" class="btn btn-success">Analyze Day Model</button>
+                <button type="submit" class="btn btn-success">Analyze Day Model</button>
             </div>
         </div>
     </form>
     {% if day_model_result %}
         <div class="result-block">
-            <h6>Day Model Result</h6>
-            <div>{{ day_model_result|safe }}</div>
+            <h6>Day Model Analysis Results</h6>
+            <pre>{{ day_model_result }}</pre>
         </div>
     {% endif %}
 
+    <!-- Clear Button -->
+    <div class="mt-4">
+        <form method="POST" action="/clear">
+            <button type="submit" class="btn btn-warning">Clear All</button>
+        </form>
+    </div>
+
     <footer class="mt-5 mb-3 text-center text-muted">
-        <small>Powered by Flask & Bootstrap | &copy; {{ now().year }}</small>
+        <small>Powered by Flask & Bootstrap</small>
     </footer>
 </div>
 </body>

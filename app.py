@@ -22,6 +22,8 @@ excel_file_path = os.getenv("RENDER_EXCEL_PATH", os.path.join(DATA_DIR, "DDR_Pre
 csv_path = os.getenv("RENDER_CSV_PATH", os.path.join(DATA_DIR, "CLhistorical5m.csv"))
 wed_odr_path = os.getenv("RENDER_WED_ODR_PATH", os.path.join(DATA_DIR, "Week Wed ODR.csv"))
 output_path = os.getenv("RENDER_OUTPUT_PATH", os.path.join(DATA_DIR, "day_model_probabilities.txt"))
+model_weekly_data_path = os.path.join(DATA_DIR, "model_weekly_data.csv")
+processed_weekly_data_path = os.path.join(DATA_DIR, "processed_weekly_data.csv")
 
 # Ensure data directory exists
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -53,6 +55,8 @@ low_level_hits = []
 # Initialize global variables for day model analysis
 df_day_model = None
 df_wed_odr = None
+df_model_weekly = None
+df_processed_weekly = None
 days = ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5']
 model_options = ['Any', 'Upside', 'Downside', 'Inside', 'Outside']
 week_role_options = ['Any', 'High of Week (HOW)', 'Low of Week (LOW)']
@@ -194,14 +198,56 @@ def load_csv_file():
         return False
     return True
 
+# Load the pre-calculated model weekly data
+def load_model_weekly_data():
+    global df_model_weekly
+    if not os.path.exists(model_weekly_data_path):
+        logger.error(f"Model weekly data file {model_weekly_data_path} not found")
+        return False
+    try:
+        df_model_weekly = pd.read_csv(model_weekly_data_path)
+        df_model_weekly['week_start'] = pd.to_datetime(df_model_weekly['week_start'])
+        logger.debug(f"Model weekly data loaded. Rows: {len(df_model_weekly)}, Columns: {df_model_weekly.columns.tolist()}")
+    except Exception as e:
+        logger.error(f"Error loading model weekly data: {e}")
+        return False
+    return True
+
+# Load the pre-calculated processed weekly data
+def load_processed_weekly_data():
+    global df_processed_weekly
+    if not os.path.exists(processed_weekly_data_path):
+        logger.error(f"Processed weekly data file {processed_weekly_data_path} not found")
+        return False
+    try:
+        df_processed_weekly = pd.read_csv(processed_weekly_data_path)
+        df_processed_weekly['week_start'] = pd.to_datetime(df_processed_weekly['week_start'])
+        logger.debug(f"Processed weekly data loaded. Rows: {len(df_processed_weekly)}, Columns: {df_processed_weekly.columns.tolist()}")
+    except Exception as e:
+        logger.error(f"Error loading processed weekly data: {e}")
+        return False
+    return True
+
 # Helper function for day model identification
 def identify_day_type(day1_high, day1_low, day2_high, day2_low):
-    if day2_high > day1_high and day2_low > day1_low:
+    """
+    Determine the model for a trading day based on price action:
+    - Upside: High > Previous High and Low >= Previous Low
+    - Downside: Low < Previous Low and High <= Previous High
+    - Inside: High < Previous High and Low >= Previous Low
+    - Outside: High > Previous High and Low < Previous Low
+    - Undefined: Doesn't fit any of the above patterns
+    """
+    # Upside: High > Previous High and Low >= Previous Low
+    if day2_high > day1_high and day2_low >= day1_low:
         return "Upside"
-    elif day2_high < day1_high and day2_low < day1_low:
+    # Downside: Low < Previous Low and High <= Previous High
+    elif day2_low < day1_low and day2_high <= day1_high:
         return "Downside"
-    elif day2_high < day1_high and day2_low > day1_low:
+    # Inside: High < Previous High and Low >= Previous Low
+    elif day2_high < day1_high and day2_low >= day1_low:
         return "Inside"
+    # Outside: High > Previous High and Low < Previous Low
     elif day2_high > day1_high and day2_low < day1_low:
         return "Outside"
     return "Undefined"
@@ -211,171 +257,180 @@ def get_week_data(df):
     try:
         # Convert timezone to NY time if not already
         if df['time'].dt.tz is None:
-            # Assume UTC if no timezone, convert to NY
             df['time'] = df['time'].dt.tz_localize('UTC').dt.tz_convert('America/New_York')
         elif df['time'].dt.tz != pytz.timezone('America/New_York'):
             df['time'] = df['time'].dt.tz_convert('America/New_York')
         
-        # Create trading session day boundaries
-        # Each trading day starts at 9:30 AM NY time and ends at the close of 9:25 AM NY time candle next day
-        def get_trading_date(x):
-            if pd.isna(x) or not isinstance(x, pd.Timestamp):
-                return pd.NaT
-            return x.date() if x.time() >= pd.Timestamp('09:30').time() else (x - pd.Timedelta(days=1)).date()
+        df['date'] = df['time'].dt.date
+        df['day_of_week'] = df['time'].dt.day_name()
         
-        df['trading_date'] = df['time'].apply(get_trading_date)
-        
-        # Align week_start to Tuesday (dayofweek=1) based on trading dates
-        df['week_start'] = pd.to_datetime(df['trading_date']) - pd.to_timedelta(
-            (pd.to_datetime(df['trading_date']).dt.dayofweek - 1) % 7, unit='D'
-        )
-        df['week_start'] = df['week_start'].dt.date
+        # Create week start (Tuesday) for each date
+        def get_week_start(date):
+            days_since_tuesday = (date.weekday() - 1) % 7  # Tuesday = 1
+            return date - timedelta(days=days_since_tuesday)
+        df['week_start'] = df['date'].apply(get_week_start)
         
         weekly_data = []
         for week_start, week_group in df.groupby('week_start'):
-            # Group by trading_date instead of calendar date
-            week_days = week_group.groupby('trading_date').agg({
+            # Group by date to get daily OHLC
+            daily_data = week_group.groupby('date').agg({
                 'high': 'max',
                 'low': 'min',
-                'time': 'first'
+                'open': 'first',
+                'close': 'last',
+                'day_of_week': 'first'
             }).reset_index()
-            
-            # Rename trading_date to date for compatibility
-            week_days = week_days.rename(columns={'trading_date': 'date'})
-            
-            logger.debug(f"Week {week_start}: {len(week_days)} days, Days={week_days['time'].dt.day_name().tolist()}")
-            
-            if len(week_days) >= 2:
-                week_days['day_of_week'] = pd.to_datetime(week_days['time']).dt.day_name()
-                high_day_idx = week_days['high'].idxmax()
-                high_day = week_days.loc[high_day_idx, 'day_of_week']
-                low_day_idx = week_days['low'].idxmin()
-                low_day = week_days.loc[low_day_idx, 'day_of_week']
-                
-                logger.debug(f"Week {week_start}: High day={high_day}, Low day={low_day}, Days={week_days['time'].tolist()}")
-                
-                week_days['model'] = 'Undefined'
-                for i in range(1, len(week_days)):
-                    day1 = week_days.iloc[i-1]
-                    day2 = week_days.iloc[i]
-                    week_days.loc[i, 'model'] = identify_day_type(
-                        day1['high'], day1['low'], day2['high'], day2['low']
+            # Only keep days that are Tue, Wed, Thu, Fri, Mon
+            day_order = ['Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Monday']
+            daily_data = daily_data[daily_data['day_of_week'].isin(day_order)]
+            # Sort by day_order, not by date
+            daily_data['day_order'] = daily_data['day_of_week'].apply(lambda d: day_order.index(d) if d in day_order else -1)
+            daily_data = daily_data.sort_values('day_order').reset_index(drop=True)
+            # Assign day_index 1-5 in this order
+            daily_data['day_index'] = daily_data['day_order'] + 1
+            # Only include weeks with at least 2 trading days
+            if len(daily_data) >= 2:
+                # Find high and low days (by price)
+                high_idx = daily_data['high'].idxmax()
+                low_idx = daily_data['low'].idxmin()
+                high_day_index = int(daily_data.loc[high_idx, 'day_index'])
+                low_day_index = int(daily_data.loc[low_idx, 'day_index'])
+                high_day_name = daily_data.loc[high_idx, 'day_of_week']
+                low_day_name = daily_data.loc[low_idx, 'day_of_week']
+                # Calculate models for each day (comparing to previous day)
+                daily_data['model'] = 'Undefined'
+                for i in range(1, len(daily_data)):
+                    prev_day = daily_data.iloc[i-1]
+                    curr_day = daily_data.iloc[i]
+                    daily_data.loc[i, 'model'] = identify_day_type(
+                        prev_day['high'], prev_day['low'],
+                        curr_day['high'], curr_day['low']
                     )
-                
-                # Attach Week Wed ODR value
+                # Get Week Wed ODR value
                 week_wed_odr_value = "Unknown"
                 if df_wed_odr is not None:
                     match = df_wed_odr[df_wed_odr['Week Start'] == week_start]
                     if isinstance(match, pd.DataFrame) and not match.empty:
-                        week_wed_odr_value = match['Week Wed ODR'].values[0]
-                
-                print(f"week_start: {week_start}, Week Wed ODR in df_wed_odr: {df_wed_odr[df_wed_odr['Week Start'] == week_start]['Week Wed ODR'].tolist() if df_wed_odr is not None else 'No data'}")
-                
+                        week_wed_odr_value = match['Week Wed ODR'].iloc[0]
                 weekly_data.append({
                     'week_start': week_start,
-                    'days': week_days,
-                    'high_day': high_day,
-                    'low_day': low_day,
+                    'days': daily_data,
+                    'high_day': high_day_name,
+                    'low_day': low_day_name,
+                    'high_day_index': high_day_index,
+                    'low_day_index': low_day_index,
                     'week_wed_odr': week_wed_odr_value
                 })
-        
-        # Log low day distribution
-        low_day_counts = {}
-        for week in weekly_data:
-            low_day = week['low_day']
-            low_day_counts[low_day] = low_day_counts.get(low_day, 0) + 1
-        logger.debug(f"Low day distribution: {low_day_counts}")
         logger.debug(f"Total valid weeks: {len(weekly_data)}")
         return weekly_data
-        
     except Exception as e:
         logger.error(f"Error processing weekly data: {e}")
         return []
 
 # Calculate day model probabilities
 def compute_day_model_probabilities(conditions):
-    day_indices = {'Day 1': 0, 'Day 2': 1, 'Day 3': 2, 'Day 4': 3, 'Day 5': 4}
-    if df_day_model is None:
-        return f"Error: CSV file {csv_path} not loaded."
-    if df_wed_odr is None:
-        return f"Error: Week Wed ODR CSV file {wed_odr_path} not loaded."
+    """Compute day model probabilities using the new processed data files"""
+    global df_model_weekly, df_processed_weekly, df_wed_odr
     
-    weekly_data = get_week_data(df_day_model)
-    if not weekly_data:
-        return "Error: No valid weekly data found."
+    if df_model_weekly is None:
+        return f"Error: Model weekly data file not loaded."
+    if df_processed_weekly is None:
+        return f"Error: Processed weekly data file not loaded."
     
-    matching_weeks = []
-    for week in weekly_data:
-        days_df = week['days']
-        match = True
-        logger.debug(f"Processing week {week['week_start']}: {len(days_df)} days, Low day={week['low_day']}")
+    # Filter the processed weekly data based on conditions
+    filtered_data = df_processed_weekly.copy()
+    
+    # Merge with Week Wed ODR data if available
+    if df_wed_odr is not None:
+        # Convert week_start to datetime for merging
+        filtered_data['week_start_dt'] = pd.to_datetime(filtered_data['week_start'])
+        df_wed_odr['Week Start'] = pd.to_datetime(df_wed_odr['Week Start'])
         
-        for day, cond in conditions.items():
-            day_idx = day_indices[day]
-            if day_idx >= len(days_df):
-                logger.debug(f"Week {week['week_start']} skipped: not enough days ({len(days_df)} < {day_idx + 1})")
-                match = False
-                break
-            if cond['model'] != 'Any' and days_df.iloc[day_idx]['model'] != cond['model']:
-                logger.debug(f"Week {week['week_start']} skipped: {day} model {days_df.iloc[day_idx]['model']} != {cond['model']}")
-                match = False
-                break
-            if cond['role'] == 'High of Week (HOW)' and days_df.iloc[day_idx]['day_of_week'] != week['high_day']:
-                logger.debug(f"Week {week['week_start']} skipped: {day} not High of Week, day_of_week={days_df.iloc[day_idx]['day_of_week']}, high_day={week['high_day']}")
-                match = False
-                break
-            if cond['role'] == 'Low of Week (LOW)' and days_df.iloc[day_idx]['day_of_week'] != week['low_day']:
-                logger.debug(f"Week {week['week_start']} skipped: {day} not Low of Week, day_of_week={days_df.iloc[day_idx]['day_of_week']}, low_day={week['low_day']}")
-                match = False
-                break
-            if day == 'Day 1' and 'week_wed_odr' in cond and cond['week_wed_odr'] != 'Any':
-                week_wed_odr_value = week.get('week_wed_odr', 'Unknown')
-                print(f"Filtering: week_wed_odr_value='{week_wed_odr_value}', filter='{cond['week_wed_odr']}'")
-                if week_wed_odr_value != cond['week_wed_odr']:
-                    logger.debug(f"Week {week['week_start']} skipped: Day 1 Week Wed ODR {week_wed_odr_value} != {cond['week_wed_odr']}")
-                    match = False
-                    break
-        if match:
-            matching_weeks.append(week)
-            logger.debug(f"Week {week['week_start']} matched conditions")
-        else:
-            logger.debug(f"Week {week['week_start']} failed conditions: {conditions}")
+        # Merge the data
+        filtered_data = filtered_data.merge(
+            df_wed_odr[['Week Start', 'Week Wed ODR']], 
+            left_on='week_start_dt', 
+            right_on='Week Start', 
+            how='left'
+        )
+        
+        # Drop the temporary column
+        filtered_data = filtered_data.drop('week_start_dt', axis=1)
     
-    logger.debug(f"Matching weeks: {len(matching_weeks)}, Conditions: {conditions}")
-    if not matching_weeks:
+    for day, cond in conditions.items():
+        # Extract day number (1-5) from "Day X" format
+        day_num = int(day.split()[1])
+        
+        if cond['role'] == 'High of Week (HOW)':
+            # Filter by high day
+            filtered_data = filtered_data[filtered_data['high_day'] == day_num]
+        elif cond['role'] == 'Low of Week (LOW)':
+            # Filter by low day
+            filtered_data = filtered_data[filtered_data['low_day'] == day_num]
+        
+        # Handle Week Wed ODR filtering for Day 1
+        if day == 'Day 1' and 'week_wed_odr' in cond and cond['week_wed_odr'] != 'Any':
+            if 'Week Wed ODR' in filtered_data.columns:
+                filtered_data = filtered_data[filtered_data['Week Wed ODR'] == cond['week_wed_odr']]
+    
+    if len(filtered_data) == 0:
         return f"No historical weeks match the selected conditions: {conditions}"
     
-    # After filtering, always show model probabilities for Day 1-5
-    model_probs_by_day = {}
-    for day_num in range(0, 5):  # Day 1 to Day 5
-        model_counts = {'Upside': 0, 'Downside': 0, 'Inside': 0, 'Outside': 0}
-        total_valid = 0
-        for week in matching_weeks:
-            days_df = week['days']
-            if day_num < len(days_df):
-                model = days_df.iloc[day_num]['model']
-                if model in model_counts:
-                    model_counts[model] += 1
-                    total_valid += 1
-        model_probs = {model: (count / total_valid if total_valid > 0 else 0) for model, count in model_counts.items()}
-        model_probs_by_day[f"Day {day_num+1}"] = model_probs
-
-    result = f"Conditions (as of {datetime.now().strftime('%B %d, %Y, %I:%M %p %Z')}):\n"
-    for day, cond in conditions.items():
-        week_wed_odr_str = f", Week Wed ODR={cond['week_wed_odr']}" if day == 'Day 1' and 'week_wed_odr' in cond else ""
-        result += f"{day}: Model={cond['model']}, Role={cond['role']}{week_wed_odr_str}\n"
-    result += f"\nNumber of historical weeks matching conditions: {len(matching_weeks)}\n"
-    result += f"\nProbabilities for Day 1-5:\n"
-    for day in ["Day 1", "Day 2", "Day 3", "Day 4", "Day 5"]:
-        result += f"{day}:\n"
-        for model, prob in model_probs_by_day[day].items():
-            result += f"  {model}: {prob:.2%}\n"
+    # Calculate high/low of week probabilities from filtered data
+    total_weeks = len(filtered_data)
     
-    try:
-        with open(output_path, 'a') as f:
-            f.write(result + "\n\n")
-    except Exception as e:
-        logger.error(f"Error writing to {output_path}: {e}")
+    # Count high and low occurrences for each day
+    high_counts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    low_counts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    
+    for _, row in filtered_data.iterrows():
+        high_day = int(row['high_day'])
+        low_day = int(row['low_day'])
+        high_counts[high_day] += 1
+        low_counts[low_day] += 1
+    
+    # Calculate probabilities
+    high_probabilities = {day: (count / total_weeks) * 100 for day, count in high_counts.items()}
+    low_probabilities = {day: (count / total_weeks) * 100 for day, count in low_counts.items()}
+    
+    # Get model probabilities from the model weekly data
+    # First, get the week_start dates from filtered_data to match with model data
+    week_starts = filtered_data['week_start'].tolist()
+    model_data_filtered = df_model_weekly[df_model_weekly['week_start'].isin(week_starts)]
+    
+    # Calculate model probabilities for each day
+    model_probs_by_day = {}
+    for day_num in range(1, 6):
+        model_col = f'day_{day_num}_model'
+        if model_col in model_data_filtered.columns:
+            model_counts = model_data_filtered[model_col].value_counts()
+            total_models = len(model_data_filtered)
+            model_probs_by_day[f'Day {day_num}'] = {}
+            for model in ['Upside', 'Downside', 'Inside', 'Outside', 'Undefined']:
+                count = model_counts.get(model, 0)
+                percentage = (count / total_models) * 100 if total_models > 0 else 0
+                model_probs_by_day[f'Day {day_num}'][model] = percentage
+        else:
+            model_probs_by_day[f'Day {day_num}'] = {
+                'Upside': 0.0, 'Downside': 0.0, 'Inside': 0.0, 'Outside': 0.0, 'Undefined': 0.0
+            }
+    
+    # Format results with prominent dataset count
+    result = f"📊 **{total_weeks} matching datasets** found based on your criteria\n\n"
+    
+    result += "High of Week Probabilities:\n"
+    for day in range(1, 6):
+        result += f"Day {day}: {high_probabilities[day]:.1f}%\n"
+    
+    result += "\nLow of Week Probabilities:\n"
+    for day in range(1, 6):
+        result += f"Day {day}: {low_probabilities[day]:.1f}%\n"
+    
+    result += "\nModel Probabilities:\n"
+    for day, models in model_probs_by_day.items():
+        result += f"\n{day}:\n"
+        for model, prob in models.items():
+            result += f"  {model}: {prob:.1f}%\n"
     
     return result
 
@@ -1014,6 +1069,31 @@ def clear_all():
         selected_day_week_wed_odrs={day: 'Any' for day in days},
         day_model_result=""
     )
+
+# Place this before the main execution block
+logger.debug("Loading data files at startup...")
+if load_csv_file():
+    logger.debug("CSV file loaded successfully")
+else:
+    logger.error("Failed to load CSV file at startup")
+
+if load_wed_odr_file():
+    logger.debug("Week Wed ODR CSV file loaded successfully")
+else:
+    logger.error("Failed to load Week Wed ODR CSV file at startup")
+
+# Load the new model and processed weekly data files
+if load_model_weekly_data():
+    logger.debug("Model weekly data file loaded successfully")
+else:
+    logger.error("Failed to load model weekly data file at startup")
+
+if load_processed_weekly_data():
+    logger.debug("Processed weekly data file loaded successfully")
+else:
+    logger.error("Failed to load processed weekly data file at startup")
+
+logger.debug("Startup data loading complete")
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
