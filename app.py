@@ -67,6 +67,20 @@ def load_excel_file():
     global df, num_columns, total_rows, odr_starts, start_colors, odr_models, odr_true_false, locations_low, colors, locations_high, high_level_hits, colors_high, low_level_hits
     if not os.path.exists(excel_file_path):
         logger.error(f"The file {excel_file_path} does not exist.")
+        # Initialize with empty data instead of failing
+        df = pd.DataFrame()
+        num_columns = 0
+        total_rows = 0
+        odr_starts = ['Any']
+        start_colors = ['Any']
+        odr_models = ['Any']
+        odr_true_false = ['Any']
+        locations_low = ['Any']
+        colors = ['Any']
+        locations_high = ['Any']
+        high_level_hits = ['Any']
+        colors_high = ['Any']
+        low_level_hits = ['Any']
         return False
     
     try:
@@ -149,6 +163,9 @@ def load_wed_odr_file():
     global df_wed_odr, week_wed_odr_options
     if not os.path.exists(wed_odr_path):
         logger.error(f"Week Wed ODR file {wed_odr_path} not found")
+        # Initialize with empty data instead of failing
+        df_wed_odr = None
+        week_wed_odr_options = ['Any']
         return False
     try:
         df_wed_odr = pd.read_csv(wed_odr_path)
@@ -156,6 +173,8 @@ def load_wed_odr_file():
         logger.debug(f"Week Wed ODR CSV loaded. Rows: {len(df_wed_odr)}, Columns: {df_wed_odr.columns.tolist()}")
     except Exception as e:
         logger.error(f"Error loading Week Wed ODR CSV: {e}")
+        df_wed_odr = None
+        week_wed_odr_options = ['Any']
         return False
 
     required_columns = ['Week Start', 'Week Wed ODR']
@@ -165,6 +184,8 @@ def load_wed_odr_file():
             logger.debug("Renamed 'Week Wed ODR ' to 'Week Wed ODR'")
         else:
             logger.error(f"Week Wed ODR CSV must contain columns: {required_columns}")
+            df_wed_odr = None
+            week_wed_odr_options = ['Any']
             return False
 
     df_wed_odr['Week Wed ODR'] = df_wed_odr['Week Wed ODR'].astype(str).str.strip()
@@ -184,17 +205,20 @@ def load_csv_file():
     global df_day_model
     if not os.path.exists(csv_path):
         logger.error(f"CSV file {csv_path} not found")
+        df_day_model = None
         return False
     try:
         df_day_model = pd.read_csv(csv_path, parse_dates=['time'])
         logger.debug(f"CSV loaded. Rows: {len(df_day_model)}, Columns: {df_day_model.columns.tolist()}")
     except Exception as e:
         logger.error(f"Error loading CSV: {e}")
+        df_day_model = None
         return False
 
     required_columns = ['time', 'open', 'high', 'low', 'close']
     if not all(col in df_day_model.columns for col in required_columns):
         logger.error(f"CSV must contain columns: {required_columns}")
+        df_day_model = None
         return False
     return True
 
@@ -203,6 +227,7 @@ def load_model_weekly_data():
     global df_model_weekly
     if not os.path.exists(model_weekly_data_path):
         logger.error(f"Model weekly data file {model_weekly_data_path} not found")
+        df_model_weekly = None
         return False
     try:
         df_model_weekly = pd.read_csv(model_weekly_data_path)
@@ -210,6 +235,7 @@ def load_model_weekly_data():
         logger.debug(f"Model weekly data loaded. Rows: {len(df_model_weekly)}, Columns: {df_model_weekly.columns.tolist()}")
     except Exception as e:
         logger.error(f"Error loading model weekly data: {e}")
+        df_model_weekly = None
         return False
     return True
 
@@ -218,6 +244,7 @@ def load_processed_weekly_data():
     global df_processed_weekly
     if not os.path.exists(processed_weekly_data_path):
         logger.error(f"Processed weekly data file {processed_weekly_data_path} not found")
+        df_processed_weekly = None
         return False
     try:
         df_processed_weekly = pd.read_csv(processed_weekly_data_path)
@@ -225,6 +252,7 @@ def load_processed_weekly_data():
         logger.debug(f"Processed weekly data loaded. Rows: {len(df_processed_weekly)}, Columns: {df_processed_weekly.columns.tolist()}")
     except Exception as e:
         logger.error(f"Error loading processed weekly data: {e}")
+        df_processed_weekly = None
         return False
     return True
 
@@ -434,6 +462,49 @@ def compute_day_model_probabilities(conditions):
     
     return result
 
+# Startup function to load all data files
+def load_all_data_files():
+    """Load all data files at startup with error handling"""
+    logger.debug("Loading data files at startup...")
+    
+    # Load Excel file for scenario comparison
+    excel_loaded = load_excel_file()
+    if excel_loaded:
+        logger.debug("Excel file loaded successfully")
+    else:
+        logger.warning("Excel file could not be loaded - scenario comparison features will be limited")
+    
+    # Load CSV file for day model analysis
+    csv_loaded = load_csv_file()
+    if csv_loaded:
+        logger.debug("CSV file loaded successfully")
+    else:
+        logger.warning("CSV file could not be loaded - day model analysis features will be limited")
+    
+    # Load Week Wed ODR file
+    wed_odr_loaded = load_wed_odr_file()
+    if wed_odr_loaded:
+        logger.debug("Week Wed ODR CSV file loaded successfully")
+    else:
+        logger.warning("Week Wed ODR file could not be loaded - Week Wed ODR filtering will be limited")
+    
+    # Load model weekly data
+    model_weekly_loaded = load_model_weekly_data()
+    if model_weekly_loaded:
+        logger.debug("Model weekly data file loaded successfully")
+    else:
+        logger.warning("Model weekly data file could not be loaded - day model analysis will be limited")
+    
+    # Load processed weekly data
+    processed_weekly_loaded = load_processed_weekly_data()
+    if processed_weekly_loaded:
+        logger.debug("Processed weekly data file loaded successfully")
+    else:
+        logger.warning("Processed weekly data file could not be loaded - day model analysis will be limited")
+    
+    logger.debug("Startup data loading complete")
+    return excel_loaded, csv_loaded, wed_odr_loaded, model_weekly_loaded, processed_weekly_loaded
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     global df, num_columns, total_rows
@@ -458,7 +529,46 @@ def index():
     
     if df is None:
         if not load_excel_file():
-            error = f"Failed to load Excel file: {excel_file_path}"
+            error = f"Failed to load Excel file: {excel_file_path}. Please ensure the data file is available."
+            # Return a basic template with error message
+            return render_template(
+                'index.html',
+                error=error,
+                odr_starts=['Any'],
+                start_colors=['Any'],
+                odr_models=['Any'],
+                odr_true_false=['Any'],
+                locations_low=['Any'],
+                colors=['Any'],
+                locations_high=['Any'],
+                high_level_hits=['Any'],
+                colors_high=['Any'],
+                low_level_hits=['Any'],
+                selected_odr_start=selected_odr_start,
+                selected_start_color=selected_start_color,
+                selected_odr_model=selected_odr_model,
+                selected_odr_true_false=selected_odr_true_false,
+                selected_location_low1=selected_location_low1,
+                selected_low_level_hit1=selected_low_level_hit1,
+                selected_color1=selected_color1,
+                selected_location_high1=selected_location_high1,
+                selected_high_level_hit1=selected_high_level_hit1,
+                selected_color_high1=selected_color_high1,
+                selected_location_low2=selected_location_low2,
+                selected_low_level_hit2=selected_low_level_hit2,
+                selected_color2=selected_color2,
+                selected_location_high2=selected_location_high2,
+                selected_high_level_hit2=selected_high_level_hit2,
+                selected_color_high2=selected_color_high2,
+                days=days,
+                model_options=model_options,
+                week_role_options=week_role_options,
+                week_wed_odr_options=week_wed_odr_options,
+                selected_day_models={day: 'Any' for day in days},
+                selected_day_roles={day: 'Any' for day in days},
+                selected_day_week_wed_odrs={day: 'Any' for day in days},
+                day_model_result=""
+            )
     
     if request.method == 'POST' and 'odr_start1' in request.form:
         try:
@@ -1094,6 +1204,9 @@ else:
     logger.error("Failed to load processed weekly data file at startup")
 
 logger.debug("Startup data loading complete")
+
+# Load all data files at startup with better error handling
+load_all_data_files()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
