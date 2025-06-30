@@ -5,6 +5,7 @@ import os
 import logging
 from datetime import datetime, timedelta
 import pytz
+import numpy as np
 
 app = Flask(__name__)
 
@@ -231,6 +232,9 @@ def load_model_weekly_data():
         return False
     try:
         df_model_weekly = pd.read_csv(model_weekly_data_path)
+        # Ensure DataFrame type
+        if not isinstance(df_model_weekly, pd.DataFrame):
+            df_model_weekly = pd.DataFrame(df_model_weekly)
         df_model_weekly['week_start'] = pd.to_datetime(df_model_weekly['week_start'])
         logger.debug(f"Model weekly data loaded. Rows: {len(df_model_weekly)}, Columns: {df_model_weekly.columns.tolist()}")
     except Exception as e:
@@ -359,7 +363,9 @@ def get_week_data(df):
 def compute_day_model_probabilities(conditions):
     """Compute day model probabilities using the new processed data files"""
     global df_model_weekly, df_processed_weekly, df_wed_odr
+    import pandas as pd
     
+    logger.debug(f"Received conditions: {conditions}")
     if df_model_weekly is None:
         return f"Error: Model weekly data file not loaded."
     if df_processed_weekly is None:
@@ -367,70 +373,70 @@ def compute_day_model_probabilities(conditions):
     
     # Filter the processed weekly data based on conditions
     filtered_data = df_processed_weekly.copy()
+    logger.debug(f"Initial rows: {len(filtered_data)}")
+    if not isinstance(filtered_data, pd.DataFrame):
+        filtered_data = pd.DataFrame(filtered_data)
     
     # Merge with Week Wed ODR data if available
     if df_wed_odr is not None:
-        # Convert week_start to datetime for merging
         filtered_data['week_start_dt'] = pd.to_datetime(filtered_data['week_start'])
         df_wed_odr['Week Start'] = pd.to_datetime(df_wed_odr['Week Start'])
-        
-        # Merge the data
-        filtered_data = filtered_data.merge(
-            df_wed_odr[['Week Start', 'Week Wed ODR']], 
-            left_on='week_start_dt', 
-            right_on='Week Start', 
+        right_df = df_wed_odr[['Week Start', 'Week Wed ODR']]
+        if not isinstance(right_df, pd.DataFrame):
+            right_df = pd.DataFrame(right_df)
+        filtered_data = pd.merge(
+            filtered_data,
+            right_df,
+            left_on='week_start_dt',
+            right_on='Week Start',
             how='left'
         )
-        
-        # Drop the temporary column
         filtered_data = filtered_data.drop('week_start_dt', axis=1)
-    
     for day, cond in conditions.items():
-        # Extract day number (1-5) from "Day X" format
         day_num = int(day.split()[1])
-        
+        logger.debug(f"Filtering for {day}: {cond}")
         if cond['role'] == 'High of Week (HOW)':
-            # Filter by high day
-            filtered_data = filtered_data[filtered_data['high_day'] == day_num]
+            if not isinstance(filtered_data, pd.DataFrame):
+                filtered_data = pd.DataFrame(filtered_data)
+            filtered_data = filtered_data[filtered_data['high_day'] == day_num].copy()
+            logger.debug(f"After HOW filter for {day}: {len(filtered_data)} rows")
         elif cond['role'] == 'Low of Week (LOW)':
-            # Filter by low day
-            filtered_data = filtered_data[filtered_data['low_day'] == day_num]
-        
-        # Handle Week Wed ODR filtering for Day 1
+            if not isinstance(filtered_data, pd.DataFrame):
+                filtered_data = pd.DataFrame(filtered_data)
+            filtered_data = filtered_data[filtered_data['low_day'] == day_num].copy()
+            logger.debug(f"After LOW filter for {day}: {len(filtered_data)} rows")
+        if 'model' in cond and cond['model'] != 'Any':
+            model_col = f'day_{day_num}_model'
+            if isinstance(filtered_data, pd.DataFrame) and model_col in filtered_data.columns:
+                filtered_data = filtered_data[filtered_data[model_col] == cond['model']].copy()
+                logger.debug(f"After model filter for {day} ({cond['model']}): {len(filtered_data)} rows")
         if day == 'Day 1' and 'week_wed_odr' in cond and cond['week_wed_odr'] != 'Any':
-            if 'Week Wed ODR' in filtered_data.columns:
-                filtered_data = filtered_data[filtered_data['Week Wed ODR'] == cond['week_wed_odr']]
-    
+            if isinstance(filtered_data, pd.DataFrame) and 'Week Wed ODR' in filtered_data.columns:
+                filtered_data = filtered_data[filtered_data['Week Wed ODR'] == cond['week_wed_odr']].copy()
+                logger.debug(f"After Week Wed ODR filter for {day}: {len(filtered_data)} rows")
+    if not isinstance(filtered_data, pd.DataFrame):
+        filtered_data = pd.DataFrame(filtered_data)
+    logger.debug(f"Final filtered rows: {len(filtered_data)}")
     if len(filtered_data) == 0:
         return f"No historical weeks match the selected conditions: {conditions}"
-    
-    # Calculate high/low of week probabilities from filtered data
     total_weeks = len(filtered_data)
-    
-    # Count high and low occurrences for each day
     high_counts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
     low_counts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
-    
     for _, row in filtered_data.iterrows():
         high_day = int(row['high_day'])
         low_day = int(row['low_day'])
         high_counts[high_day] += 1
         low_counts[low_day] += 1
-    
-    # Calculate probabilities
     high_probabilities = {day: (count / total_weeks) * 100 for day, count in high_counts.items()}
     low_probabilities = {day: (count / total_weeks) * 100 for day, count in low_counts.items()}
-    
-    # Get model probabilities from the model weekly data
-    # First, get the week_start dates from filtered_data to match with model data
-    week_starts = filtered_data['week_start'].tolist()
+    week_starts = list(filtered_data['week_start'])
+    # Always convert to DataFrame to guarantee .isin() is available
+    df_model_weekly = pd.DataFrame(df_model_weekly)
     model_data_filtered = df_model_weekly[df_model_weekly['week_start'].isin(week_starts)]
-    
-    # Calculate model probabilities for each day
     model_probs_by_day = {}
     for day_num in range(1, 6):
         model_col = f'day_{day_num}_model'
-        if model_col in model_data_filtered.columns:
+        if isinstance(model_data_filtered, pd.DataFrame) and model_col in model_data_filtered.columns:
             model_counts = model_data_filtered[model_col].value_counts()
             total_models = len(model_data_filtered)
             model_probs_by_day[f'Day {day_num}'] = {}
@@ -442,24 +448,18 @@ def compute_day_model_probabilities(conditions):
             model_probs_by_day[f'Day {day_num}'] = {
                 'Upside': 0.0, 'Downside': 0.0, 'Inside': 0.0, 'Outside': 0.0, 'Undefined': 0.0
             }
-    
-    # Format results with prominent dataset count
     result = f"📊 **{total_weeks} matching datasets** found based on your criteria\n\n"
-    
     result += "High of Week Probabilities:\n"
     for day in range(1, 6):
         result += f"Day {day}: {high_probabilities[day]:.1f}%\n"
-    
     result += "\nLow of Week Probabilities:\n"
     for day in range(1, 6):
         result += f"Day {day}: {low_probabilities[day]:.1f}%\n"
-    
     result += "\nModel Probabilities:\n"
     for day, models in model_probs_by_day.items():
         result += f"\n{day}:\n"
         for model, prob in models.items():
             result += f"  {model}: {prob:.1f}%\n"
-    
     return result
 
 # Startup function to load all data files
@@ -1065,6 +1065,9 @@ def day_model():
     selected_day_models = {day: 'Any' for day in days}
     selected_day_roles = {day: 'Any' for day in days}
     selected_day_week_wed_odrs = {day: 'Any' for day in days}
+
+    # Debug: print the raw POST form data
+    logger.debug(f"POST form data: {dict(request.form)}")
     
     # Preserve scenario comparison results from session or request
     scenario_result = request.form.get('scenario_result', "")
@@ -1088,11 +1091,16 @@ def day_model():
                 selected_day_models[day] = model
                 selected_day_roles[day] = role
                 selected_day_week_wed_odrs[day] = week_wed_odr
+                # Add to conditions if ANY of model, role, or week_wed_odr is not 'Any'
                 if model != 'Any' or role != 'Any' or (day == 'Day 1' and week_wed_odr != 'Any'):
                     conditions[day] = {'model': model, 'role': role}
                     if day == 'Day 1' and week_wed_odr != 'Any':
                         conditions[day]['week_wed_odr'] = week_wed_odr
+                    logger.debug(f"Added {day} to conditions: {conditions[day]}")
+                else:
+                    logger.debug(f"Skipped {day}: model='{model}', role='{role}', week_wed_odr='{week_wed_odr}'")
             
+            logger.debug(f"Final conditions: {conditions}")
             result = compute_day_model_probabilities(conditions)
         except Exception as e:
             error = f"Error processing day model analysis: {e}"
