@@ -1574,10 +1574,10 @@ def scenario_comparison():
         if total_matches > 0:
             normalized_prob1 = (safe_rows1 / total_matches) * 100
             normalized_prob2 = (safe_rows2 / total_matches) * 100
-        elif safe_rows1 > 0:
+        elif safe_rows1 > 0 and safe_rows2 == 0:
             normalized_prob1 = 100.0
             normalized_prob2 = 0.0
-        elif safe_rows2 > 0:
+        elif safe_rows2 > 0 and safe_rows1 == 0:
             normalized_prob1 = 0.0
             normalized_prob2 = 100.0
         else:
@@ -1587,8 +1587,8 @@ def scenario_comparison():
             'prob_comparison': f"Scenario 1: {normalized_prob1:.1f}% chance     Scenario 2: {normalized_prob2:.1f}% chance",
             'scenario1_lines': scenario1_lines,
             'scenario2_lines': scenario2_lines,
-            'matching_rows1': matching_rows1,
-            'matching_rows2': matching_rows2,
+            'matching_rows1': safe_rows1,
+            'matching_rows2': safe_rows2,
             'total_rows': int(len(df)) if df is not None else 0
         }
     return render_template(
