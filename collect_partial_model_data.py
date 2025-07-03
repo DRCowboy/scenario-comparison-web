@@ -132,15 +132,19 @@ def collect_partial_models(df):
                     # Get the current day's full high and low
                     current_day_full_high = current_day_data['high'].max()
                     current_day_full_low = current_day_data['low'].min()
-                    
-                    # Get the previous day's full high and low
-                    prev_day_full_high = prev_day_data['high'].max()
-                    prev_day_full_low = prev_day_data['low'].min()
-                    
-                    # Determine partial model using full day high/low comparison
+
+                    # Get the previous day's 4:00–9:25 AM session
+                    prev_day_partial_session = prev_day_data[
+                        (prev_day_data['time'].dt.time >= datetime.strptime('04:00', '%H:%M').time()) &
+                        (prev_day_data['time'].dt.time <= datetime.strptime('09:25', '%H:%M').time())
+                    ]
+                    prev_day_partial_high = prev_day_partial_session['high'].max()
+                    prev_day_partial_low = prev_day_partial_session['low'].min()
+
+                    # Determine partial model using current day full-session high/low vs previous day 4:00-9:25 high/low
                     partial_model = determine_partial_model_from_high_low(
                         current_day_full_high, current_day_full_low,
-                        prev_day_full_high, prev_day_full_low
+                        prev_day_partial_high, prev_day_partial_low
                     )
             
             # Get the first timestamp of the current day for the date

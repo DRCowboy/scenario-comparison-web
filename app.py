@@ -740,36 +740,47 @@ def index():
                     scenario1_percentage = 0
                     scenario2_percentage = 0
                 
+                # Calculate normalized probabilities (relative likelihood)
+                total_matches = matching_rows1 + matching_rows2
+                if total_matches > 0:
+                    normalized_prob1 = (matching_rows1 / total_matches) * 100
+                    normalized_prob2 = (matching_rows2 / total_matches) * 100
+                elif matching_rows1 > 0 and matching_rows2 == 0:
+                    normalized_prob1 = 100.0
+                    normalized_prob2 = 0.0
+                elif matching_rows2 > 0 and matching_rows1 == 0:
+                    normalized_prob1 = 0.0
+                    normalized_prob2 = 100.0
+                else:
+                    normalized_prob1 = 0.0
+                    normalized_prob2 = 0.0
+
                 # Determine which scenario is more likely and create trading recommendation
                 def get_most_likely_locations(df_filtered):
                     if len(df_filtered) == 0:
                         return "Unknown", "Unknown"
-                    
-                    # Get the most common high and low locations from the data
                     high_locations = df_filtered['Location of High'].value_counts()
                     low_locations = df_filtered['Location of Low'].value_counts()
-                    
                     most_likely_high = high_locations.index[0] if len(high_locations) > 0 else "Unknown"
                     most_likely_low = low_locations.index[0] if len(low_locations) > 0 else "Unknown"
-                    
                     return most_likely_high, most_likely_low
-                
-                if scenario1_percentage > scenario2_percentage:
+
+                if normalized_prob1 > normalized_prob2:
                     more_likely_scenario = "Scenario 1"
-                    more_likely_pct = scenario1_percentage
-                    less_likely_pct = scenario2_percentage
+                    more_likely_pct = normalized_prob1
+                    less_likely_pct = normalized_prob2
                     most_likely_high, most_likely_low = get_most_likely_locations(df_filtered1)
                     trading_recommendation = f"EXPECT: High in {most_likely_high}, Low in {most_likely_low}"
-                elif scenario2_percentage > scenario1_percentage:
+                elif normalized_prob2 > normalized_prob1:
                     more_likely_scenario = "Scenario 2"
-                    more_likely_pct = scenario2_percentage
-                    less_likely_pct = scenario1_percentage
+                    more_likely_pct = normalized_prob2
+                    less_likely_pct = normalized_prob1
                     most_likely_high, most_likely_low = get_most_likely_locations(df_filtered2)
                     trading_recommendation = f"EXPECT: High in {most_likely_high}, Low in {most_likely_low}"
                 else:
                     more_likely_scenario = "Equal"
-                    more_likely_pct = scenario1_percentage
-                    less_likely_pct = scenario2_percentage
+                    more_likely_pct = normalized_prob1
+                    less_likely_pct = normalized_prob2
                     trading_recommendation = "EQUAL PROBABILITY - No clear direction"
                 
                 # Calculate direction analysis - only consider fields that have actual values (not 'Any')
@@ -834,7 +845,7 @@ def index():
 MORE LIKELY: {more_likely_scenario} ({more_likely_pct:.1f}% vs {less_likely_pct:.1f}%)
 TRADING RECOMMENDATION: {trading_recommendation}
 ====================================================================================================
-Scenario 1: {scenario1_percentage:.1f}% chance                                                     Scenario 2: {scenario2_percentage:.1f}% chance
+Scenario 1: {normalized_prob1:.1f}% chance                                                     Scenario 2: {normalized_prob2:.1f}% chance
 Dataset: Scenario 1 ({matching_rows1}/{total_rows} rows)         Dataset: Scenario 2 ({matching_rows2}/{total_rows} rows)
 ====================================================================================================
 {scenario1_direction}                                                         {scenario2_direction}"""
@@ -1567,30 +1578,122 @@ def scenario_comparison():
         max_lines = max(len(scenario1_lines), len(scenario2_lines))
         scenario1_lines.extend([""] * (max_lines - len(scenario1_lines)))
         scenario2_lines.extend([""] * (max_lines - len(scenario2_lines)))
-        # Calculate probabilities (normalized to sum to 100%)
-        safe_rows1 = int(matching_rows1) if matching_rows1 is not None else 0
-        safe_rows2 = int(matching_rows2) if matching_rows2 is not None else 0
-        total_matches = safe_rows1 + safe_rows2
+        # Calculate normalized probabilities (relative likelihood)
+        total_matches = matching_rows1 + matching_rows2
         if total_matches > 0:
-            normalized_prob1 = (safe_rows1 / total_matches) * 100
-            normalized_prob2 = (safe_rows2 / total_matches) * 100
-        elif safe_rows1 > 0 and safe_rows2 == 0:
+            normalized_prob1 = (matching_rows1 / total_matches) * 100
+            normalized_prob2 = (matching_rows2 / total_matches) * 100
+        elif matching_rows1 > 0 and matching_rows2 == 0:
             normalized_prob1 = 100.0
             normalized_prob2 = 0.0
-        elif safe_rows2 > 0 and safe_rows1 == 0:
+        elif matching_rows2 > 0 and matching_rows1 == 0:
             normalized_prob1 = 0.0
             normalized_prob2 = 100.0
         else:
             normalized_prob1 = 0.0
             normalized_prob2 = 0.0
-        result = {
-            'prob_comparison': f"Scenario 1: {normalized_prob1:.1f}% chance     Scenario 2: {normalized_prob2:.1f}% chance",
-            'scenario1_lines': scenario1_lines,
-            'scenario2_lines': scenario2_lines,
-            'matching_rows1': safe_rows1,
-            'matching_rows2': safe_rows2,
-            'total_rows': int(len(df)) if df is not None else 0
-        }
+
+        # Determine which scenario is more likely and create trading recommendation
+        def get_most_likely_locations(df_filtered):
+            if len(df_filtered) == 0:
+                return "Unknown", "Unknown"
+            high_locations = df_filtered['Location of High'].value_counts()
+            low_locations = df_filtered['Location of Low'].value_counts()
+            most_likely_high = high_locations.index[0] if len(high_locations) > 0 else "Unknown"
+            most_likely_low = low_locations.index[0] if len(low_locations) > 0 else "Unknown"
+            return most_likely_high, most_likely_low
+
+        if normalized_prob1 > normalized_prob2:
+            more_likely_scenario = "Scenario 1"
+            more_likely_pct = normalized_prob1
+            less_likely_pct = normalized_prob2
+            most_likely_high, most_likely_low = get_most_likely_locations(df_filtered1)
+            trading_recommendation = f"EXPECT: High in {most_likely_high}, Low in {most_likely_low}"
+        elif normalized_prob2 > normalized_prob1:
+            more_likely_scenario = "Scenario 2"
+            more_likely_pct = normalized_prob2
+            less_likely_pct = normalized_prob1
+            most_likely_high, most_likely_low = get_most_likely_locations(df_filtered2)
+            trading_recommendation = f"EXPECT: High in {most_likely_high}, Low in {most_likely_low}"
+        else:
+            more_likely_scenario = "Equal"
+            more_likely_pct = normalized_prob1
+            less_likely_pct = normalized_prob2
+            trading_recommendation = "EQUAL PROBABILITY - No clear direction"
+        
+        # Calculate direction analysis - only consider fields that have actual values (not 'Any')
+        def get_direction_percentage(df_filtered, high_loc, low_loc):
+            if len(df_filtered) == 0:
+                return "0%"
+            
+            # Only filter on fields that have actual values (not 'Any')
+            filtered_df = df_filtered.copy()
+            
+            if high_loc != 'Any':
+                filtered_df = filtered_df[filtered_df['Location of High'] == high_loc]
+            
+            if low_loc != 'Any':
+                filtered_df = filtered_df[filtered_df['Location of Low'] == low_loc]
+            
+            # Calculate percentage of this specific combination within the filtered data
+            if len(filtered_df) == 0:
+                return "0%"
+            
+            # Count how many rows have this specific high-low combination
+            direction_count = len(filtered_df[
+                (filtered_df['Location of High'] == high_loc if high_loc != 'Any' else True) & 
+                (filtered_df['Location of Low'] == low_loc if low_loc != 'Any' else True)
+            ])
+            direction_pct = (direction_count / len(filtered_df)) * 100
+            return f"{direction_pct:.0f}%"
+        
+        # Get the most likely locations for each scenario from the data
+        scenario1_high, scenario1_low = get_most_likely_locations(df_filtered1)
+        scenario2_high, scenario2_low = get_most_likely_locations(df_filtered2)
+        
+        scenario1_direction = f"{get_direction_percentage(df_filtered1, scenario1_high, scenario1_low)} High {scenario1_high}-Low {scenario1_low}"
+        scenario2_direction = f"{get_direction_percentage(df_filtered2, scenario2_high, scenario2_low)} High {scenario2_high}-Low {scenario2_low}"
+        
+        # Calculate level probabilities for each scenario - show only the top 3 most likely levels
+        def get_level_probabilities(df_filtered, scenario_name):
+            if len(df_filtered) == 0:
+                return "No data"
+            
+            levels = []
+            # High levels
+            high_levels = df_filtered['High Level Hit'].value_counts(normalize=True) * 100
+            for level, pct in high_levels.head(3).items():
+                if pct > 0:
+                    levels.append(f"High {level}: {pct:.1f}%")
+            
+            # Low levels  
+            low_levels = df_filtered['Low Level Hit'].value_counts(normalize=True) * 100
+            for level, pct in low_levels.head(3).items():
+                if pct > 0:
+                    levels.append(f"Low {level}: {pct:.1f}%")
+            
+            return levels[:6]  # Limit to 6 most common, return as list
+        
+        scenario1_levels = get_level_probabilities(df_filtered1, "Scenario 1")
+        scenario2_levels = get_level_probabilities(df_filtered2, "Scenario 2")
+        
+        # Format the result with trading-focused output
+        result = f"""TRADING ANALYSIS - {datetime.now().strftime('%B %d, %Y, %I:%M %p %Z')}
+====================================================================================================
+MORE LIKELY: {more_likely_scenario} ({more_likely_pct:.1f}% vs {less_likely_pct:.1f}%)
+TRADING RECOMMENDATION: {trading_recommendation}
+====================================================================================================
+Scenario 1: {normalized_prob1:.1f}% chance                                                     Scenario 2: {normalized_prob2:.1f}% chance
+Dataset: Scenario 1 ({matching_rows1}/{total_rows} rows)         Dataset: Scenario 2 ({matching_rows2}/{total_rows} rows)
+====================================================================================================
+{scenario1_direction}                                                         {scenario2_direction}"""
+        
+        # Add level probabilities with proper formatting
+        max_levels = max(len(scenario1_levels), len(scenario2_levels))
+        for i in range(max_levels):
+            level1 = scenario1_levels[i] if i < len(scenario1_levels) else ""
+            level2 = scenario2_levels[i] if i < len(scenario2_levels) else ""
+            result += f"\n{level1:<65} {level2}"
     return render_template(
         'scenario_comparison.html',
         odr_starts=odr_starts,
