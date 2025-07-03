@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 from werkzeug.utils import secure_filename
 import pandas as pd
 import os
@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timedelta
 import pytz
 import numpy as np
+import io
 
 app = Flask(__name__)
 
@@ -1382,29 +1383,40 @@ SCENARIO_TARGETS = {
     "Min": ["Min"]
 }
 
-def calculate_scenario_probability(df, num_columns, odr_start, start_color, odr_model, odr_true_false, location_high, high_level_hit, high_color, location_low, low_level_hit, low_color):
+def calculate_scenario_probability(df, num_columns, odr_start, start_color, odr_model, odr_true_false, location_high, high_level_hit, high_color, location_low, low_level_hit, low_color, debug_label=None):
     filtered_df = df.copy()
+    debug_msgs = []
     if num_columns == 11:
         if odr_start != "Any":
             filtered_df = filtered_df[filtered_df["Odr start"] == odr_start]
+            debug_msgs.append(f"[{debug_label}] Filter Odr start={odr_start}: {len(filtered_df)} rows")
         if start_color != "Any":
             filtered_df = filtered_df[filtered_df["Start color"] == start_color]
+            debug_msgs.append(f"[{debug_label}] Filter Start color={start_color}: {len(filtered_df)} rows")
     if odr_model != "Any":
         filtered_df = filtered_df[filtered_df["ODR Model"] == odr_model]
+        debug_msgs.append(f"[{debug_label}] Filter ODR Model={odr_model}: {len(filtered_df)} rows")
     if odr_true_false != "Any":
         filtered_df = filtered_df[filtered_df["ODR True/False"] == odr_true_false]
+        debug_msgs.append(f"[{debug_label}] Filter ODR True/False={odr_true_false}: {len(filtered_df)} rows")
     if location_high != "Any":
         filtered_df = filtered_df[filtered_df["Location of High"] == location_high]
+        debug_msgs.append(f"[{debug_label}] Filter Location of High={location_high}: {len(filtered_df)} rows")
     if high_color != "Any":
         filtered_df = filtered_df[filtered_df["High color"] == high_color]
+        debug_msgs.append(f"[{debug_label}] Filter High color={high_color}: {len(filtered_df)} rows")
     if high_level_hit != "Any":
         filtered_df = filtered_df[filtered_df["High Level Hit"] == high_level_hit]
+        debug_msgs.append(f"[{debug_label}] Filter High Level Hit={high_level_hit}: {len(filtered_df)} rows")
     if location_low != "Any":
         filtered_df = filtered_df[filtered_df["Location of Low"] == location_low]
+        debug_msgs.append(f"[{debug_label}] Filter Location of Low={location_low}: {len(filtered_df)} rows")
     if low_color != "Any":
         filtered_df = filtered_df[filtered_df["Low Color"] == low_color]
+        debug_msgs.append(f"[{debug_label}] Filter Low Color={low_color}: {len(filtered_df)} rows")
     if low_level_hit != "Any":
         filtered_df = filtered_df[filtered_df["Low Level Hit"] == low_level_hit]
+        debug_msgs.append(f"[{debug_label}] Filter Low Level Hit={low_level_hit}: {len(filtered_df)} rows")
     try:
         total_rows = int(len(df)) if df is not None else 0
     except Exception:
@@ -1421,7 +1433,16 @@ def calculate_scenario_probability(df, num_columns, odr_start, start_color, odr_
         probability = (matching_rows / total_rows) * 100
     else:
         probability = 0.0
-    return matching_rows, probability
+    # Print debug info
+    if debug_label:
+        print(f"\n--- Debug for {debug_label} ---")
+        for msg in debug_msgs:
+            print(msg)
+        print(f"[{debug_label}] Final filtered rows: {matching_rows} / {total_rows}")
+        print(f"[{debug_label}] Unique values in each column:")
+        for col in filtered_df.columns:
+            print(f"  {col}: {sorted(filtered_df[col].unique())}")
+    return matching_rows, probability, filtered_df
 
 def calculate_target_probabilities(df, num_columns, odr_start, start_color, odr_model, odr_true_false, location_high, high_level_hit, high_color, location_low, low_level_hit, low_color):
     filtered_df = df.copy()
@@ -1498,6 +1519,8 @@ def scenario_comparison():
     high_level_hits = sorted(df["High Level Hit"].unique())
     colors_high = sorted(df["High color"].unique())
     result = None
+    filtered_df1 = None
+    filtered_df2 = None
     if request.method == 'POST':
         # Scenario 1
         odr_start1 = request.form.get('odr_start1', 'Any')
@@ -1522,12 +1545,12 @@ def scenario_comparison():
         low_level_hit2 = request.form.get('low_level_hit2', 'Any')
         low_color2 = request.form.get('low_color2', 'Any')
         # Probabilities
-        matching_rows1, prob1 = calculate_scenario_probability(
+        matching_rows1, prob1, filtered_df1 = calculate_scenario_probability(
             df, num_columns, odr_start1, start_color1, odr_model1, odr_true_false1,
-            location_high1, high_level_hit1, high_color1, location_low1, low_level_hit1, low_color1)
-        matching_rows2, prob2 = calculate_scenario_probability(
+            location_high1, high_level_hit1, high_color1, location_low1, low_level_hit1, low_color1, debug_label="Scenario 1")
+        matching_rows2, prob2, filtered_df2 = calculate_scenario_probability(
             df, num_columns, odr_start2, start_color2, odr_model2, odr_true_false2,
-            location_high2, high_level_hit2, high_color2, location_low2, low_level_hit2, low_color2)
+            location_high2, high_level_hit2, high_color2, location_low2, low_level_hit2, low_color2, debug_label="Scenario 2")
         total_prob = prob1 + prob2
         if total_prob > 0:
             normalized_prob1 = (prob1 / total_prob) * 100
@@ -1544,10 +1567,29 @@ def scenario_comparison():
         max_lines = max(len(scenario1_lines), len(scenario2_lines))
         scenario1_lines.extend([""] * (max_lines - len(scenario1_lines)))
         scenario2_lines.extend([""] * (max_lines - len(scenario2_lines)))
+        # Calculate probabilities (normalized to sum to 100%)
+        safe_rows1 = int(matching_rows1) if matching_rows1 is not None else 0
+        safe_rows2 = int(matching_rows2) if matching_rows2 is not None else 0
+        total_matches = safe_rows1 + safe_rows2
+        if total_matches > 0:
+            normalized_prob1 = (safe_rows1 / total_matches) * 100
+            normalized_prob2 = (safe_rows2 / total_matches) * 100
+        elif safe_rows1 > 0:
+            normalized_prob1 = 100.0
+            normalized_prob2 = 0.0
+        elif safe_rows2 > 0:
+            normalized_prob1 = 0.0
+            normalized_prob2 = 100.0
+        else:
+            normalized_prob1 = 0.0
+            normalized_prob2 = 0.0
         result = {
-            'prob_comparison': f"Scenario 1 has a {normalized_prob1:.1f}% chance of occurring, Scenario 2 has a {normalized_prob2:.1f}% chance.",
+            'prob_comparison': f"Scenario 1: {normalized_prob1:.1f}% chance     Scenario 2: {normalized_prob2:.1f}% chance",
             'scenario1_lines': scenario1_lines,
-            'scenario2_lines': scenario2_lines
+            'scenario2_lines': scenario2_lines,
+            'matching_rows1': matching_rows1,
+            'matching_rows2': matching_rows2,
+            'total_rows': int(len(df)) if df is not None else 0
         }
     return render_template(
         'scenario_comparison.html',
@@ -1562,8 +1604,46 @@ def scenario_comparison():
         high_level_hits=high_level_hits,
         colors_high=colors_high,
         num_columns=num_columns,
-        result=result
+        result=result,
+        filtered_df1=filtered_df1,
+        filtered_df2=filtered_df2
     )
+
+@app.route('/scenario_comparison_export', methods=['POST'])
+def scenario_comparison_export():
+    import io
+    from flask import send_file
+    df, num_columns = load_scenario_comparison_df()
+    scenario = int(request.form.get('scenario', '1'))
+    if scenario == 1:
+        odr_start = request.form.get('odr_start1', 'Any')
+        start_color = request.form.get('start_color1', 'Any')
+        odr_model = request.form.get('odr_model1', 'Any')
+        odr_true_false = request.form.get('odr_true_false1', 'Any')
+        location_high = request.form.get('location_high1', 'Any')
+        high_level_hit = request.form.get('high_level_hit1', 'Any')
+        high_color = request.form.get('high_color1', 'Any')
+        location_low = request.form.get('location_low1', 'Any')
+        low_level_hit = request.form.get('low_level_hit1', 'Any')
+        low_color = request.form.get('low_color1', 'Any')
+    else:
+        odr_start = request.form.get('odr_start2', 'Any')
+        start_color = request.form.get('start_color2', 'Any')
+        odr_model = request.form.get('odr_model2', 'Any')
+        odr_true_false = request.form.get('odr_true_false2', 'Any')
+        location_high = request.form.get('location_high2', 'Any')
+        high_level_hit = request.form.get('high_level_hit2', 'Any')
+        high_color = request.form.get('high_color2', 'Any')
+        location_low = request.form.get('location_low2', 'Any')
+        low_level_hit = request.form.get('low_level_hit2', 'Any')
+        low_color = request.form.get('low_color2', 'Any')
+    _, _, filtered_df = calculate_scenario_probability(
+        df, num_columns, odr_start, start_color, odr_model, odr_true_false,
+        location_high, high_level_hit, high_color, location_low, low_level_hit, low_color, debug_label=f"Export Scenario {scenario}")
+    output = io.StringIO()
+    filtered_df.to_csv(output, index=False)
+    output.seek(0)
+    return send_file(io.BytesIO(output.getvalue().encode()), mimetype='text/csv', as_attachment=True, download_name=f'scenario_{scenario}_filtered.csv')
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
