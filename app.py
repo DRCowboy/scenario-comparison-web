@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
 from werkzeug.utils import secure_filename
 import pandas as pd
 import os
@@ -1333,6 +1333,237 @@ logger.debug("Startup data loading complete")
 
 # Load all data files at startup with better error handling
 load_all_data_files()
+
+# --- Scenario Comparison Logic (from user-provided script) ---
+SCENARIO_EXCEL_PATH = os.path.join('data', 'DDR_Predictor.xlsx')
+
+def load_scenario_comparison_df():
+    if not os.path.exists(SCENARIO_EXCEL_PATH):
+        raise FileNotFoundError(f"The file {SCENARIO_EXCEL_PATH} does not exist.")
+    xl = pd.ExcelFile(SCENARIO_EXCEL_PATH)
+    sheet_names = xl.sheet_names
+    df_raw = None
+    for sheet in sheet_names:
+        temp_df = pd.read_excel(SCENARIO_EXCEL_PATH, sheet_name=sheet, header=0)
+        num_columns = len(temp_df.columns)
+        if num_columns == 11:
+            df_raw = temp_df
+            break
+        elif num_columns == 9:
+            df_raw = temp_df
+    if df_raw is None:
+        raise ValueError(f"No sheet found with 9 or 11 columns. Found sheets: {sheet_names}.")
+    num_columns = len(df_raw.columns)
+    if num_columns == 11:
+        column_names = [
+            "Date", "Odr start", "Start color",
+            "Location of Low", "Low Level Hit", "Low Color",
+            "Location of High", "High Level Hit", "High color",
+            "ODR Model", "ODR True/False"
+        ]
+    elif num_columns == 9:
+        column_names = [
+            "Date",
+            "Location of Low", "Low Level Hit", "Low Color",
+            "Location of High", "High Level Hit", "High color",
+            "ODR Model", "ODR True/False"
+        ]
+    else:
+        raise ValueError(f"Unexpected number of columns: {num_columns}.")
+    df_raw.columns = column_names
+    df = df_raw.drop(columns=["Date"]).reset_index(drop=True)
+    for col in df.columns:
+        df[col] = df[col].fillna("Unknown").astype(str)
+    return df, num_columns
+
+SCENARIO_TARGETS = {
+    "Med-Max": ["Med-Max", "Max Extreme"],
+    "Max Extreme": ["Max Extreme"],
+    "Min": ["Min"]
+}
+
+def calculate_scenario_probability(df, num_columns, odr_start, start_color, odr_model, odr_true_false, location_high, high_level_hit, high_color, location_low, low_level_hit, low_color):
+    filtered_df = df.copy()
+    if num_columns == 11:
+        if odr_start != "Any":
+            filtered_df = filtered_df[filtered_df["Odr start"] == odr_start]
+        if start_color != "Any":
+            filtered_df = filtered_df[filtered_df["Start color"] == start_color]
+    if odr_model != "Any":
+        filtered_df = filtered_df[filtered_df["ODR Model"] == odr_model]
+    if odr_true_false != "Any":
+        filtered_df = filtered_df[filtered_df["ODR True/False"] == odr_true_false]
+    if location_high != "Any":
+        filtered_df = filtered_df[filtered_df["Location of High"] == location_high]
+    if high_color != "Any":
+        filtered_df = filtered_df[filtered_df["High color"] == high_color]
+    if high_level_hit != "Any":
+        filtered_df = filtered_df[filtered_df["High Level Hit"] == high_level_hit]
+    if location_low != "Any":
+        filtered_df = filtered_df[filtered_df["Location of Low"] == location_low]
+    if low_color != "Any":
+        filtered_df = filtered_df[filtered_df["Low Color"] == low_color]
+    if low_level_hit != "Any":
+        filtered_df = filtered_df[filtered_df["Low Level Hit"] == low_level_hit]
+    try:
+        total_rows = int(len(df)) if df is not None else 0
+    except Exception:
+        total_rows = 0
+    try:
+        matching_rows = int(len(filtered_df)) if filtered_df is not None else 0
+    except Exception:
+        matching_rows = 0
+    if not isinstance(total_rows, int):
+        total_rows = 0
+    if not isinstance(matching_rows, int):
+        matching_rows = 0
+    if total_rows > 0:
+        probability = (matching_rows / total_rows) * 100
+    else:
+        probability = 0.0
+    return matching_rows, probability
+
+def calculate_target_probabilities(df, num_columns, odr_start, start_color, odr_model, odr_true_false, location_high, high_level_hit, high_color, location_low, low_level_hit, low_color):
+    filtered_df = df.copy()
+    if num_columns == 11:
+        if odr_start != "Any":
+            filtered_df = filtered_df[filtered_df["Odr start"] == odr_start]
+        if start_color != "Any":
+            filtered_df = filtered_df[filtered_df["Start color"] == start_color]
+    if odr_model != "Any":
+        filtered_df = filtered_df[filtered_df["ODR Model"] == odr_model]
+    if odr_true_false != "Any":
+        filtered_df = filtered_df[filtered_df["ODR True/False"] == odr_true_false]
+    if location_high != "Any":
+        filtered_df = filtered_df[filtered_df["Location of High"] == location_high]
+    if high_color != "Any":
+        filtered_df = filtered_df[filtered_df["High color"] == high_color]
+    if high_level_hit != "Any":
+        filtered_df = filtered_df[filtered_df["High Level Hit"] == high_level_hit]
+    if location_low != "Any":
+        filtered_df = filtered_df[filtered_df["Location of Low"] == location_low]
+    if low_color != "Any":
+        filtered_df = filtered_df[filtered_df["Low Color"] == low_color]
+    if low_level_hit != "Any":
+        filtered_df = filtered_df[filtered_df["Low Level Hit"] == low_level_hit]
+    matching_rows = len(filtered_df)
+    if matching_rows == 0:
+        return ["No matching data found for this scenario."]
+    output = []
+    for target, target_levels in SCENARIO_TARGETS.items():
+        high_target_df = filtered_df[filtered_df["High Level Hit"].isin(target_levels)]
+        high_target_count = len(high_target_df)
+        low_target_df = filtered_df[filtered_df["Low Level Hit"].isin(target_levels)]
+        low_target_count = len(low_target_df)
+        target_count = high_target_count + low_target_count - len(high_target_df[high_target_df.index.isin(low_target_df.index)])
+        target_prob = (target_count / matching_rows) * 100 if matching_rows > 0 else 0.0
+        location_probs = []
+        if target_count > 0:
+            high_combinations = high_target_df.groupby(["Location of High", "Location of Low"]).size().reset_index(name="count")
+            high_combinations["probability"] = (high_combinations["count"] / target_count) * 100
+            low_combinations = low_target_df.groupby(["Location of High", "Location of Low"]).size().reset_index(name="count")
+            low_combinations["probability"] = (low_combinations["count"] / target_count) * 100
+            all_combinations = pd.concat([high_combinations, low_combinations])
+            all_combinations = all_combinations.groupby(["Location of High", "Location of Low"])["probability"].sum().reset_index()
+            all_combinations = all_combinations.sort_values(by="probability", ascending=False)
+            for _, row in all_combinations.iterrows():
+                loc_high = row["Location of High"]
+                loc_low = row["Location of Low"]
+                prob = row["probability"]
+                if prob > 0:
+                    location_probs.append(f"    Details: High {loc_high}-Low {loc_low} ({prob:.1f}%)")
+        output.append(f"Target: {target} ({target_prob:.1f}%)")
+        if location_probs:
+            output.extend(location_probs)
+        else:
+            output.append("    No specific location combinations found.")
+    return output
+
+@app.route('/scenario_comparison', methods=['GET', 'POST'])
+def scenario_comparison():
+    df, num_columns = load_scenario_comparison_df()
+    # Get dropdown options
+    if num_columns == 11:
+        odr_starts = sorted(df["Odr start"].unique())
+        start_colors = sorted(df["Start color"].unique())
+    else:
+        odr_starts = []
+        start_colors = []
+    odr_models = sorted(df["ODR Model"].unique())
+    odr_true_false = sorted(df["ODR True/False"].unique())
+    locations_low = sorted(df["Location of Low"].unique())
+    low_level_hits = sorted(df["Low Level Hit"].unique())
+    colors = sorted(df["Low Color"].unique())
+    locations_high = sorted(df["Location of High"].unique())
+    high_level_hits = sorted(df["High Level Hit"].unique())
+    colors_high = sorted(df["High color"].unique())
+    result = None
+    if request.method == 'POST':
+        # Scenario 1
+        odr_start1 = request.form.get('odr_start1', 'Any')
+        start_color1 = request.form.get('start_color1', 'Any')
+        odr_model1 = request.form.get('odr_model1', 'Any')
+        odr_true_false1 = request.form.get('odr_true_false1', 'Any')
+        location_high1 = request.form.get('location_high1', 'Any')
+        high_level_hit1 = request.form.get('high_level_hit1', 'Any')
+        high_color1 = request.form.get('high_color1', 'Any')
+        location_low1 = request.form.get('location_low1', 'Any')
+        low_level_hit1 = request.form.get('low_level_hit1', 'Any')
+        low_color1 = request.form.get('low_color1', 'Any')
+        # Scenario 2
+        odr_start2 = request.form.get('odr_start2', 'Any')
+        start_color2 = request.form.get('start_color2', 'Any')
+        odr_model2 = request.form.get('odr_model2', 'Any')
+        odr_true_false2 = request.form.get('odr_true_false2', 'Any')
+        location_high2 = request.form.get('location_high2', 'Any')
+        high_level_hit2 = request.form.get('high_level_hit2', 'Any')
+        high_color2 = request.form.get('high_color2', 'Any')
+        location_low2 = request.form.get('location_low2', 'Any')
+        low_level_hit2 = request.form.get('low_level_hit2', 'Any')
+        low_color2 = request.form.get('low_color2', 'Any')
+        # Probabilities
+        matching_rows1, prob1 = calculate_scenario_probability(
+            df, num_columns, odr_start1, start_color1, odr_model1, odr_true_false1,
+            location_high1, high_level_hit1, high_color1, location_low1, low_level_hit1, low_color1)
+        matching_rows2, prob2 = calculate_scenario_probability(
+            df, num_columns, odr_start2, start_color2, odr_model2, odr_true_false2,
+            location_high2, high_level_hit2, high_color2, location_low2, low_level_hit2, low_color2)
+        total_prob = prob1 + prob2
+        if total_prob > 0:
+            normalized_prob1 = (prob1 / total_prob) * 100
+            normalized_prob2 = (prob2 / total_prob) * 100
+        else:
+            normalized_prob1 = 0.0
+            normalized_prob2 = 0.0
+        scenario1_lines = calculate_target_probabilities(
+            df, num_columns, odr_start1, start_color1, odr_model1, odr_true_false1,
+            location_high1, high_level_hit1, high_color1, location_low1, low_level_hit1, low_color1)
+        scenario2_lines = calculate_target_probabilities(
+            df, num_columns, odr_start2, start_color2, odr_model2, odr_true_false2,
+            location_high2, high_level_hit2, high_color2, location_low2, low_level_hit2, low_color2)
+        max_lines = max(len(scenario1_lines), len(scenario2_lines))
+        scenario1_lines.extend([""] * (max_lines - len(scenario1_lines)))
+        scenario2_lines.extend([""] * (max_lines - len(scenario2_lines)))
+        result = {
+            'prob_comparison': f"Scenario 1 has a {normalized_prob1:.1f}% chance of occurring, Scenario 2 has a {normalized_prob2:.1f}% chance.",
+            'scenario1_lines': scenario1_lines,
+            'scenario2_lines': scenario2_lines
+        }
+    return render_template(
+        'scenario_comparison.html',
+        odr_starts=odr_starts,
+        start_colors=start_colors,
+        odr_models=odr_models,
+        odr_true_false=odr_true_false,
+        locations_low=locations_low,
+        low_level_hits=low_level_hits,
+        colors=colors,
+        locations_high=locations_high,
+        high_level_hits=high_level_hits,
+        colors_high=colors_high,
+        num_columns=num_columns,
+        result=result
+    )
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
