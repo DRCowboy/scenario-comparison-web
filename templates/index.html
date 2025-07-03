@@ -220,6 +220,16 @@
                             {% endfor %}
                         </select>
                     </div>
+                    {% if day != 'Day 1' %}
+                    <div class="mb-2">
+                        <label for="{{ day.lower().replace(' ', '_') }}_partial_model" class="form-label">Partial Model (4:00-9:25)</label>
+                        <select class="form-select" name="{{ day.lower().replace(' ', '_') }}_partial_model" id="{{ day.lower().replace(' ', '_') }}_partial_model">
+                            {% for opt in partial_model_options %}
+                                <option value="{{ opt }}" {% if selected_day_partial_models.get(day, 'Any') == opt %}selected{% endif %}>{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
                     {% if day == 'Day 1' %}
                     <div class="mb-2">
                         <label for="day_1_week_wed_odr" class="form-label">Week Wed ODR</label>

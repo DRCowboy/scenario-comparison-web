@@ -25,6 +25,7 @@ wed_odr_path = os.getenv("RENDER_WED_ODR_PATH", os.path.join(DATA_DIR, "Week Wed
 output_path = os.getenv("RENDER_OUTPUT_PATH", os.path.join(DATA_DIR, "day_model_probabilities.txt"))
 model_weekly_data_path = os.path.join(DATA_DIR, "model_weekly_data.csv")
 processed_weekly_data_path = os.path.join(DATA_DIR, "processed_weekly_data.csv")
+model_weekly_data_with_partial_path = os.path.join(DATA_DIR, "model_weekly_data_with_partial.csv")
 
 # Ensure data directory exists
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -58,8 +59,10 @@ df_day_model = None
 df_wed_odr = None
 df_model_weekly = None
 df_processed_weekly = None
+df_model_weekly_with_partial = None
 days = ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5']
 model_options = ['Any', 'Upside', 'Downside', 'Inside', 'Outside']
+partial_model_options = ['Any', 'Upside', 'Downside', 'Inside', 'Outside', 'Undefined']
 week_role_options = ['Any', 'High of Week (HOW)', 'Low of Week (LOW)']
 week_wed_odr_options = ['Any']
 
@@ -260,6 +263,23 @@ def load_processed_weekly_data():
         return False
     return True
 
+# Load the weekly data with partial models
+def load_model_weekly_data_with_partial():
+    global df_model_weekly_with_partial
+    if not os.path.exists(model_weekly_data_with_partial_path):
+        logger.error(f"Model weekly data with partial file {model_weekly_data_with_partial_path} not found")
+        df_model_weekly_with_partial = None
+        return False
+    try:
+        df_model_weekly_with_partial = pd.read_csv(model_weekly_data_with_partial_path)
+        df_model_weekly_with_partial['week_start'] = pd.to_datetime(df_model_weekly_with_partial['week_start'])
+        logger.debug(f"Model weekly data with partial loaded. Rows: {len(df_model_weekly_with_partial)}, Columns: {df_model_weekly_with_partial.columns.tolist()}")
+    except Exception as e:
+        logger.error(f"Error loading model weekly data with partial: {e}")
+        df_model_weekly_with_partial = None
+        return False
+    return True
+
 # Helper function for day model identification
 def identify_day_type(day1_high, day1_low, day2_high, day2_low):
     """
@@ -362,7 +382,7 @@ def get_week_data(df):
 # Calculate day model probabilities
 def compute_day_model_probabilities(conditions):
     """Compute day model probabilities using the new processed data files"""
-    global df_model_weekly, df_processed_weekly, df_wed_odr
+    global df_model_weekly, df_processed_weekly, df_wed_odr, df_model_weekly_with_partial
     import pandas as pd
     
     logger.debug(f"Received conditions: {conditions}")
@@ -371,9 +391,15 @@ def compute_day_model_probabilities(conditions):
     if df_processed_weekly is None:
         return f"Error: Processed weekly data file not loaded."
     
-    # Filter the processed weekly data based on conditions
-    filtered_data = df_processed_weekly.copy()
-    logger.debug(f"Initial rows: {len(filtered_data)}")
+    # Use the data with partial models for filtering
+    if df_model_weekly_with_partial is not None:
+        filtered_data = df_model_weekly_with_partial.copy()
+        logger.debug(f"Using data with partial models. Initial rows: {len(filtered_data)}")
+    else:
+        # Fallback to processed weekly data if partial data not available
+        filtered_data = df_processed_weekly.copy()
+        logger.debug(f"Using processed weekly data (no partial models). Initial rows: {len(filtered_data)}")
+    
     if not isinstance(filtered_data, pd.DataFrame):
         filtered_data = pd.DataFrame(filtered_data)
     
@@ -414,6 +440,11 @@ def compute_day_model_probabilities(conditions):
             if isinstance(filtered_data, pd.DataFrame) and 'Week Wed ODR' in filtered_data.columns:
                 filtered_data = filtered_data[filtered_data['Week Wed ODR'] == cond['week_wed_odr']].copy()
                 logger.debug(f"After Week Wed ODR filter for {day}: {len(filtered_data)} rows")
+        if 'partial_model' in cond and cond['partial_model'] != 'Any':
+            partial_model_col = f'day_{day_num}_partial_model'
+            if isinstance(filtered_data, pd.DataFrame) and partial_model_col in filtered_data.columns:
+                filtered_data = filtered_data[filtered_data[partial_model_col] == cond['partial_model']].copy()
+                logger.debug(f"After partial model filter for {day} ({cond['partial_model']}): {len(filtered_data)} rows")
     if not isinstance(filtered_data, pd.DataFrame):
         filtered_data = pd.DataFrame(filtered_data)
     logger.debug(f"Final filtered rows: {len(filtered_data)}")
@@ -448,6 +479,32 @@ def compute_day_model_probabilities(conditions):
             model_probs_by_day[f'Day {day_num}'] = {
                 'Upside': 0.0, 'Downside': 0.0, 'Inside': 0.0, 'Outside': 0.0, 'Undefined': 0.0
             }
+    
+    # Calculate partial model probabilities
+    partial_model_probs_by_day = {}
+    if df_model_weekly_with_partial is not None:
+        partial_data_filtered = df_model_weekly_with_partial[df_model_weekly_with_partial['week_start'].isin(week_starts)]
+        for day_num in range(1, 6):
+            partial_model_col = f'day_{day_num}_partial_model'
+            if isinstance(partial_data_filtered, pd.DataFrame) and partial_model_col in partial_data_filtered.columns:
+                partial_model_counts = partial_data_filtered[partial_model_col].value_counts()
+                total_partial_models = len(partial_data_filtered)
+                partial_model_probs_by_day[f'Day {day_num}'] = {}
+                for model in ['Upside', 'Downside', 'Inside', 'Outside', 'Undefined']:
+                    count = partial_model_counts.get(model, 0)
+                    percentage = (count / total_partial_models) * 100 if total_partial_models > 0 else 0
+                    partial_model_probs_by_day[f'Day {day_num}'][model] = percentage
+            else:
+                partial_model_probs_by_day[f'Day {day_num}'] = {
+                    'Upside': 0.0, 'Downside': 0.0, 'Inside': 0.0, 'Outside': 0.0, 'Undefined': 0.0
+                }
+    else:
+        # If no partial data available, set all to 0
+        for day_num in range(1, 6):
+            partial_model_probs_by_day[f'Day {day_num}'] = {
+                'Upside': 0.0, 'Downside': 0.0, 'Inside': 0.0, 'Outside': 0.0, 'Undefined': 0.0
+            }
+    
     result = f"📊 **{total_weeks} matching datasets** found based on your criteria\n\n"
     result += "High of Week Probabilities:\n"
     for day in range(1, 6):
@@ -460,6 +517,11 @@ def compute_day_model_probabilities(conditions):
         result += f"\n{day}:\n"
         for model, prob in models.items():
             result += f"  {model}: {prob:.1f}%\n"
+        # Add partial model statistics right after regular model statistics for each day
+        if day in partial_model_probs_by_day:
+            result += f"  Partial Model (4:00-9:25):\n"
+            for model, prob in partial_model_probs_by_day[day].items():
+                result += f"    {model}: {prob:.1f}%\n"
     return result
 
 # Startup function to load all data files
@@ -502,8 +564,15 @@ def load_all_data_files():
     else:
         logger.warning("Processed weekly data file could not be loaded - day model analysis will be limited")
     
+    # Load model weekly data with partial models
+    model_weekly_with_partial_loaded = load_model_weekly_data_with_partial()
+    if model_weekly_with_partial_loaded:
+        logger.debug("Model weekly data with partial file loaded successfully")
+    else:
+        logger.warning("Model weekly data with partial file could not be loaded - partial model analysis will be limited")
+    
     logger.debug("Startup data loading complete")
-    return excel_loaded, csv_loaded, wed_odr_loaded, model_weekly_loaded, processed_weekly_loaded
+    return excel_loaded, csv_loaded, wed_odr_loaded, model_weekly_loaded, processed_weekly_loaded, model_weekly_with_partial_loaded
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -567,16 +636,32 @@ def index():
                 selected_day_models={day: 'Any' for day in days},
                 selected_day_roles={day: 'Any' for day in days},
                 selected_day_week_wed_odrs={day: 'Any' for day in days},
+                selected_day_partial_models={day: 'Any' for day in days},
                 day_model_result=""
             )
     
+    # After loading df and total_rows, ensure total_rows is always an int and not None
+    if total_rows is None:
+        total_rows = 0
+    else:
+        try:
+            total_rows = int(total_rows)
+        except Exception:
+            total_rows = 0
+
     if request.method == 'POST' and 'odr_start1' in request.form:
         try:
+            # Shared ODR start and start color
+            shared_odr_start = request.form.get('odr_start1', 'Unknown')
+            shared_start_color = request.form.get('start_color1', 'Unknown')
+            shared_odr_model = request.form.get('odr_model1', 'Unknown')
+            shared_odr_true_false = request.form.get('odr_true_false1', 'Unknown')
+
             scenario1_conditions = {
-                'Odr start': request.form.get('odr_start1', 'Unknown'),
-                'Start color': request.form.get('start_color1', 'Unknown'),
-                'ODR Model': request.form.get('odr_model1', 'Unknown'),
-                'ODR True/False': request.form.get('odr_true_false1', 'Unknown'),
+                'Odr start': shared_odr_start,
+                'Start color': shared_start_color,
+                'ODR Model': shared_odr_model,
+                'ODR True/False': shared_odr_true_false,
                 'Location of Low': request.form.get('location_low1', 'Unknown'),
                 'Low Level Hit': request.form.get('low_level_hit1', 'Unknown'),
                 'Low color': request.form.get('color1', 'Unknown'),
@@ -585,6 +670,10 @@ def index():
                 'High color': request.form.get('color_high1', 'Unknown')
             }
             scenario2_conditions = {
+                'Odr start': shared_odr_start,
+                'Start color': shared_start_color,
+                'ODR Model': shared_odr_model,
+                'ODR True/False': shared_odr_true_false,
                 'Location of Low': request.form.get('location_low2', 'Unknown'),
                 'Low Level Hit': request.form.get('low_level_hit2', 'Unknown'),
                 'Low color': request.form.get('color2', 'Unknown'),
@@ -592,7 +681,7 @@ def index():
                 'High Level Hit': request.form.get('high_level_hit2', 'Unknown'),
                 'High color': request.form.get('color_high2', 'Unknown')
             }
-            
+
             selected_odr_start = scenario1_conditions['Odr start']
             selected_start_color = scenario1_conditions['Start color']
             selected_odr_model = scenario1_conditions['ODR Model']
@@ -613,36 +702,42 @@ def index():
             if df is None:
                 result = "Error: Data not loaded."
             else:
-                df_filtered1 = df.copy()
-                df_filtered2 = df.copy()
-                for key, value in scenario1_conditions.items():
-                    if value != "Any":
-                        if key == "Low Level Hit" or key == "High Level Hit":
-                            df_filtered1 = df_filtered1[df_filtered1[key].isin(LEVEL_HIERARCHY.get(value, [value]))]
-                        else:
-                            df_filtered1 = df_filtered1[df_filtered1[key] == value]
-                for key, value in scenario2_conditions.items():
-                    if value != "Any":
-                        if key == "Low Level Hit" or key == "High Level Hit":
-                            df_filtered2 = df_filtered2[df_filtered2[key].isin(LEVEL_HIERARCHY.get(value, [value]))]
-                        else:
-                            df_filtered2 = df_filtered2[df_filtered2[key] == value]
-                
+                def filter_scenario(df, cond):
+                    df_filtered = df.copy()
+                    for key, value in cond.items():
+                        if value != "Any":
+                            if key == "Low Level Hit" or key == "High Level Hit":
+                                df_filtered = df_filtered[df_filtered[key].isin(LEVEL_HIERARCHY.get(value, [value]))]
+                            else:
+                                df_filtered = df_filtered[df_filtered[key] == value]
+                    return df_filtered
+
+                # Filter both scenarios with shared ODR start/start color
+                df_filtered1 = filter_scenario(df, scenario1_conditions)
+                df_filtered2 = filter_scenario(df, scenario2_conditions)
+
                 matching_rows1 = len(df_filtered1)
                 matching_rows2 = len(df_filtered2)
-                
-                # Analyze which scenario is more likely
-                scenario1_percentage = matching_rows1 / total_rows * 100
-                scenario2_percentage = matching_rows2 / total_rows * 100
-                
-                # Calculate total percentage and normalize to 100%
-                total_pct = scenario1_percentage + scenario2_percentage
-                if total_pct > 0:
-                    scenario1_pct_normalized = (scenario1_percentage / total_pct) * 100
-                    scenario2_pct_normalized = (scenario2_percentage / total_pct) * 100
+
+                # Ensure all are valid integers
+                try:
+                    matching_rows1 = int(matching_rows1)
+                except Exception:
+                    matching_rows1 = 0
+                try:
+                    matching_rows2 = int(matching_rows2)
+                except Exception:
+                    matching_rows2 = 0
+                try:
+                    total_rows_int = int(total_rows)
+                except Exception:
+                    total_rows_int = 0
+                if total_rows_int > 0:
+                    scenario1_percentage = matching_rows1 / total_rows_int * 100
+                    scenario2_percentage = matching_rows2 / total_rows_int * 100
                 else:
-                    scenario1_pct_normalized = 0
-                    scenario2_pct_normalized = 0
+                    scenario1_percentage = 0
+                    scenario2_percentage = 0
                 
                 # Determine which scenario is more likely and create trading recommendation
                 def get_most_likely_locations(df_filtered):
@@ -658,22 +753,22 @@ def index():
                     
                     return most_likely_high, most_likely_low
                 
-                if scenario1_pct_normalized > scenario2_pct_normalized:
+                if scenario1_percentage > scenario2_percentage:
                     more_likely_scenario = "Scenario 1"
-                    more_likely_pct = scenario1_pct_normalized
-                    less_likely_pct = scenario2_pct_normalized
+                    more_likely_pct = scenario1_percentage
+                    less_likely_pct = scenario2_percentage
                     most_likely_high, most_likely_low = get_most_likely_locations(df_filtered1)
                     trading_recommendation = f"EXPECT: High in {most_likely_high}, Low in {most_likely_low}"
-                elif scenario2_pct_normalized > scenario1_pct_normalized:
+                elif scenario2_percentage > scenario1_percentage:
                     more_likely_scenario = "Scenario 2"
-                    more_likely_pct = scenario2_pct_normalized
-                    less_likely_pct = scenario1_pct_normalized
+                    more_likely_pct = scenario2_percentage
+                    less_likely_pct = scenario1_percentage
                     most_likely_high, most_likely_low = get_most_likely_locations(df_filtered2)
                     trading_recommendation = f"EXPECT: High in {most_likely_high}, Low in {most_likely_low}"
                 else:
                     more_likely_scenario = "Equal"
-                    more_likely_pct = scenario1_pct_normalized
-                    less_likely_pct = scenario2_pct_normalized
+                    more_likely_pct = scenario1_percentage
+                    less_likely_pct = scenario2_percentage
                     trading_recommendation = "EQUAL PROBABILITY - No clear direction"
                 
                 # Calculate direction analysis - only consider fields that have actual values (not 'Any')
@@ -738,7 +833,7 @@ def index():
 MORE LIKELY: {more_likely_scenario} ({more_likely_pct:.1f}% vs {less_likely_pct:.1f}%)
 TRADING RECOMMENDATION: {trading_recommendation}
 ====================================================================================================
-Scenario 1: {scenario1_pct_normalized:.1f}% chance                                                     Scenario 2: {scenario2_pct_normalized:.1f}% chance
+Scenario 1: {scenario1_percentage:.1f}% chance                                                     Scenario 2: {scenario2_percentage:.1f}% chance
 Dataset: Scenario 1 ({matching_rows1}/{total_rows} rows)         Dataset: Scenario 2 ({matching_rows2}/{total_rows} rows)
 ====================================================================================================
 {scenario1_direction}                                                         {scenario2_direction}"""
@@ -784,11 +879,13 @@ Dataset: Scenario 1 ({matching_rows1}/{total_rows} rows)         Dataset: Scenar
         selected_color_high2=selected_color_high2,
         days=days,
         model_options=model_options,
+        partial_model_options=partial_model_options,
         week_role_options=week_role_options,
         week_wed_odr_options=week_wed_odr_options,
         selected_day_models={day: 'Any' for day in days},
         selected_day_roles={day: 'Any' for day in days},
         selected_day_week_wed_odrs={day: 'Any' for day in days},
+        selected_day_partial_models={day: 'Any' for day in days},
         day_model_result=""
     )
 
@@ -844,11 +941,13 @@ def upload_file():
             selected_color_high2=selected_color_high2,
             days=days,
             model_options=model_options,
+            partial_model_options=partial_model_options,
             week_role_options=week_role_options,
             week_wed_odr_options=week_wed_odr_options,
             selected_day_models={day: 'Any' for day in days},
             selected_day_roles={day: 'Any' for day in days},
             selected_day_week_wed_odrs={day: 'Any' for day in days},
+            selected_day_partial_models={day: 'Any' for day in days},
             day_model_result=""
         )
     
@@ -885,11 +984,13 @@ def upload_file():
             selected_color_high2=selected_color_high2,
             days=days,
             model_options=model_options,
+            partial_model_options=partial_model_options,
             week_role_options=week_role_options,
             week_wed_odr_options=week_wed_odr_options,
             selected_day_models={day: 'Any' for day in days},
             selected_day_roles={day: 'Any' for day in days},
             selected_day_week_wed_odrs={day: 'Any' for day in days},
+            selected_day_partial_models={day: 'Any' for day in days},
             day_model_result=""
         )
     if isinstance(file.filename, str) and file.filename.endswith('.xlsx'):
@@ -932,11 +1033,13 @@ def upload_file():
                     selected_color_high2=selected_color_high2,
                     days=days,
                     model_options=model_options,
+                    partial_model_options=partial_model_options,
                     week_role_options=week_role_options,
                     week_wed_odr_options=week_wed_odr_options,
                     selected_day_models={day: 'Any' for day in days},
                     selected_day_roles={day: 'Any' for day in days},
                     selected_day_week_wed_odrs={day: 'Any' for day in days},
+                    selected_day_partial_models={day: 'Any' for day in days},
                     day_model_result=""
                 )
             else:
@@ -971,11 +1074,13 @@ def upload_file():
                     selected_color_high2=selected_color_high2,
                     days=days,
                     model_options=model_options,
+                    partial_model_options=partial_model_options,
                     week_role_options=week_role_options,
                     week_wed_odr_options=week_wed_odr_options,
                     selected_day_models={day: 'Any' for day in days},
                     selected_day_roles={day: 'Any' for day in days},
                     selected_day_week_wed_odrs={day: 'Any' for day in days},
+                    selected_day_partial_models={day: 'Any' for day in days},
                     day_model_result=""
                 )
         except Exception as e:
@@ -1010,11 +1115,13 @@ def upload_file():
                 selected_color_high2=selected_color_high2,
                 days=days,
                 model_options=model_options,
+                partial_model_options=partial_model_options,
                 week_role_options=week_role_options,
                 week_wed_odr_options=week_wed_odr_options,
                 selected_day_models={day: 'Any' for day in days},
                 selected_day_roles={day: 'Any' for day in days},
                 selected_day_week_wed_odrs={day: 'Any' for day in days},
+                selected_day_partial_models={day: 'Any' for day in days},
                 day_model_result=""
             )
     else:
@@ -1049,11 +1156,13 @@ def upload_file():
             selected_color_high2=selected_color_high2,
             days=days,
             model_options=model_options,
+            partial_model_options=partial_model_options,
             week_role_options=week_role_options,
             week_wed_odr_options=week_wed_odr_options,
             selected_day_models={day: 'Any' for day in days},
             selected_day_roles={day: 'Any' for day in days},
             selected_day_week_wed_odrs={day: 'Any' for day in days},
+            selected_day_partial_models={day: 'Any' for day in days},
             day_model_result=""
         )
 
@@ -1065,6 +1174,7 @@ def day_model():
     selected_day_models = {day: 'Any' for day in days}
     selected_day_roles = {day: 'Any' for day in days}
     selected_day_week_wed_odrs = {day: 'Any' for day in days}
+    selected_day_partial_models = {day: 'Any' for day in days}
 
     # Debug: print the raw POST form data
     logger.debug(f"POST form data: {dict(request.form)}")
@@ -1088,17 +1198,21 @@ def day_model():
                 model = request.form.get(f'{day_key}_model', 'Any')
                 role = request.form.get(f'{day_key}_role', 'Any')
                 week_wed_odr = request.form.get('day_1_week_wed_odr', 'Any') if day == 'Day 1' else 'Any'
+                partial_model = request.form.get(f'{day_key}_partial_model', 'Any') if day != 'Day 1' else 'Any'
                 selected_day_models[day] = model
                 selected_day_roles[day] = role
                 selected_day_week_wed_odrs[day] = week_wed_odr
-                # Add to conditions if ANY of model, role, or week_wed_odr is not 'Any'
-                if model != 'Any' or role != 'Any' or (day == 'Day 1' and week_wed_odr != 'Any'):
+                selected_day_partial_models[day] = partial_model
+                # Add to conditions if ANY of model, role, week_wed_odr, or partial_model is not 'Any'
+                if model != 'Any' or role != 'Any' or (day == 'Day 1' and week_wed_odr != 'Any') or (day != 'Day 1' and partial_model != 'Any'):
                     conditions[day] = {'model': model, 'role': role}
                     if day == 'Day 1' and week_wed_odr != 'Any':
                         conditions[day]['week_wed_odr'] = week_wed_odr
+                    if day != 'Day 1' and partial_model != 'Any':
+                        conditions[day]['partial_model'] = partial_model
                     logger.debug(f"Added {day} to conditions: {conditions[day]}")
                 else:
-                    logger.debug(f"Skipped {day}: model='{model}', role='{role}', week_wed_odr='{week_wed_odr}'")
+                    logger.debug(f"Skipped {day}: model='{model}', role='{role}', week_wed_odr='{week_wed_odr}', partial_model='{partial_model}'")
             
             logger.debug(f"Final conditions: {conditions}")
             result = compute_day_model_probabilities(conditions)
@@ -1137,11 +1251,13 @@ def day_model():
         selected_color_high2="Any",
         days=days,
         model_options=model_options,
+        partial_model_options=partial_model_options,
         week_role_options=week_role_options,
         week_wed_odr_options=week_wed_odr_options,
         selected_day_models=selected_day_models,
         selected_day_roles=selected_day_roles,
         selected_day_week_wed_odrs=selected_day_week_wed_odrs,
+        selected_day_partial_models=selected_day_partial_models,
         day_model_result=result
     )
 
@@ -1180,11 +1296,13 @@ def clear_all():
         selected_color_high2="Any",
         days=days,
         model_options=model_options,
+        partial_model_options=partial_model_options,
         week_role_options=week_role_options,
         week_wed_odr_options=week_wed_odr_options,
         selected_day_models={day: 'Any' for day in days},
         selected_day_roles={day: 'Any' for day in days},
         selected_day_week_wed_odrs={day: 'Any' for day in days},
+        selected_day_partial_models={day: 'Any' for day in days},
         day_model_result=""
     )
 
