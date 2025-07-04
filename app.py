@@ -1748,6 +1748,50 @@ def scenario_comparison_export():
     output.seek(0)
     return send_file(io.BytesIO(output.getvalue().encode()), mimetype='text/csv', as_attachment=True, download_name=f'scenario_{scenario}_filtered.csv')
 
+def collect_partial_models(df):
+    """Collect partial model data for each trading day"""
+    df['date'] = df['time'].dt.date
+    df['time_only'] = df['time'].dt.time
+    
+    # Create week start (Tuesday) for each date
+    def get_week_start(date):
+        days_since_tuesday = (date.weekday() - 1) % 7
+        return date - timedelta(days=days_since_tuesday)
+    
+    df['week_start'] = df['date'].apply(get_week_start)
+    
+    partial_model_data = []
+    all_weeks = list(df['week_start'].unique())
+    for i, week_start in enumerate(all_weeks):
+        week_group = df[df['week_start'] == week_start]
+        if len(week_group) == 0:
+            continue
+        week_trading_days = sorted(week_group['trading_day'].unique())
+        for day_num in week_trading_days:
+            if day_num is None:
+                continue
+            current_day_data = week_group[week_group['trading_day'] == day_num]
+            if len(current_day_data) == 0:
+                continue
+            current_day_start = current_day_data['time'].min()
+            current_day_end = current_day_data['time'].max()
+            current_day_full_high = current_day_data['high'].max()
+            current_day_full_low = current_day_data['low'].min()
+            # Get previous calendar day
+            prev_calendar_day = current_day_start.date() - timedelta(days=1)
+            prev_day_data = df[df['date'] == prev_calendar_day]
+            # Filter for 4:00–9:25 AM session
+            prev_day_partial_session = prev_day_data[(prev_day_data['time_only'] >= pd.to_datetime('04:00:00').time()) & (prev_day_data['time_only'] <= pd.to_datetime('09:25:00').time())]
+            if len(prev_day_partial_session) == 0:
+                partial_model = "N/A"
+                prev_day_partial_high = float('nan')
+                prev_day_partial_low = float('nan')
+            else:
+                prev_day_partial_high = prev_day_partial_session['high'].max()
+                prev_day_partial_low = prev_day_partial_session['low'].min()
+                # Compare current day full session to previous day's 4:00–9:25 AM session
+                partial_model = determine_partial_model_from_high_low(current_day_full_high, current_day_full_low, prev_day_partial_high, prev_day_partial_low)
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     app.run(host='0.0.0.0', port=port, debug=True)

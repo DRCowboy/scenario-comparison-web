@@ -2,10 +2,12 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import logging
+import calendar
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 def load_data():
     """Load the historical data CSV file."""
@@ -64,25 +66,33 @@ def determine_partial_model_from_high_low(current_high, current_low, prev_high, 
     if pd.isna(prev_high) or pd.isna(prev_low):
         return 'Undefined'
     
+    # Debug: Print the comparison values
+    logger.debug(f"Comparing: Current({current_high:.2f}, {current_low:.2f}) vs Previous({prev_high:.2f}, {prev_low:.2f})")
+    
     # Upside: current day high is higher than previous day AND current day low is higher than previous day low
     if current_high > prev_high and current_low > prev_low:
+        logger.debug("Result: Upside")
         return 'Upside'
     # Downside: current day low is lower than previous day AND current day high is lower than previous day
     elif current_low < prev_low and current_high < prev_high:
+        logger.debug("Result: Downside")
         return 'Downside'
     # Outside: current day high is higher than previous day AND current day low is lower than previous day
     elif current_high > prev_high and current_low < prev_low:
+        logger.debug("Result: Outside")
         return 'Outside'
     # Inside: current day high is lower than previous day AND current day low is higher than previous day low
     elif current_high < prev_high and current_low > prev_low:
+        logger.debug("Result: Inside")
         return 'Inside'
     else:
+        logger.debug("Result: Undefined")
         return 'Undefined'
 
 def collect_partial_models(df):
     """Collect partial model data for each trading day"""
-    # Group by calendar week (starting Tuesday)
     df['date'] = df['time'].dt.date
+    df['time_only'] = df['time'].dt.time
     
     # Create week start (Tuesday) for each date
     def get_week_start(date):
@@ -92,71 +102,53 @@ def collect_partial_models(df):
     df['week_start'] = df['date'].apply(get_week_start)
     
     partial_model_data = []
-    
-    # Process each week
-    for week_start, week_group in df.groupby('week_start'):
+    all_weeks = list(df['week_start'].unique())
+    for i, week_start in enumerate(all_weeks):
+        week_group = df[df['week_start'] == week_start]
         if len(week_group) == 0:
             continue
-        
-        # Get trading days for this week
         week_trading_days = sorted(week_group['trading_day'].unique())
-        
-        # For each trading day, get the previous day's partial session
         for day_num in week_trading_days:
             if day_num is None:
                 continue
-            
-            # Get the current day's data
+            # Get the trading day session to determine the calendar date
             current_day_data = week_group[week_group['trading_day'] == day_num]
-            
             if len(current_day_data) == 0:
                 continue
-            
-            # For partial models, we need the previous day's 4:00 AM - 9:25 AM session
-            # Day 2 partial model is based on Day 1's 4:00 AM - 9:25 AM
-            # Day 3 partial model is based on Day 2's 4:00 AM - 9:25 AM
-            # etc.
-            
-            if day_num == 1:
-                # Day 1 partial model - need to look at previous week's Day 5
-                # This is complex, so we'll skip Day 1 partial for now
-                partial_model = "N/A"
-            else:
-                # Get the previous day's data
-                prev_day_num = day_num - 1
-                prev_day_data = week_group[week_group['trading_day'] == prev_day_num]
-                
-                if len(prev_day_data) == 0:
-                    partial_model = "N/A"
-                else:
-                    # Get the current day's full high and low
-                    current_day_full_high = current_day_data['high'].max()
-                    current_day_full_low = current_day_data['low'].min()
-
-                    # Get the previous day's 4:00–9:25 AM session
-                    prev_day_partial_session = prev_day_data[
-                        (prev_day_data['time'].dt.time >= datetime.strptime('04:00', '%H:%M').time()) &
-                        (prev_day_data['time'].dt.time <= datetime.strptime('09:25', '%H:%M').time())
-                    ]
-                    prev_day_partial_high = prev_day_partial_session['high'].max()
-                    prev_day_partial_low = prev_day_partial_session['low'].min()
-
-                    # Determine partial model using current day full-session high/low vs previous day 4:00-9:25 high/low
-                    partial_model = determine_partial_model_from_high_low(
-                        current_day_full_high, current_day_full_low,
-                        prev_day_partial_high, prev_day_partial_low
-                    )
-            
-            # Get the first timestamp of the current day for the date
             current_day_start = current_day_data['time'].min()
+            current_calendar_date = current_day_start.date()
             
+            # Get the FULL CALENDAR DAY session (not just trading day session)
+            full_calendar_day_data = df[df['date'] == current_calendar_date]
+            current_day_full_high = full_calendar_day_data['high'].max()
+            current_day_full_low = full_calendar_day_data['low'].min()
+            
+            # Get previous calendar day
+            prev_calendar_day = current_calendar_date - timedelta(days=1)
+            prev_day_data = df[df['date'] == prev_calendar_day]
+            # Filter for 4:00–9:25 AM session
+            prev_day_partial_session = prev_day_data[(prev_day_data['time_only'] >= pd.to_datetime('04:00:00').time()) & (prev_day_data['time_only'] <= pd.to_datetime('09:25:00').time())]
+            if len(prev_day_partial_session) == 0:
+                partial_model = "N/A"
+                prev_day_partial_high = float('nan')
+                prev_day_partial_low = float('nan')
+            else:
+                prev_day_partial_high = prev_day_partial_session['high'].max()
+                prev_day_partial_low = prev_day_partial_session['low'].min()
+                # Compare current day full session to previous day's 4:00–9:25 AM session
+                partial_model = determine_partial_model_from_high_low(current_day_full_high, current_day_full_low, prev_day_partial_high, prev_day_partial_low)
+            # Debug output for recent weeks
+            if i > len(all_weeks) - 5:
+                logger.info(f"Week {week_start}, Day {day_num}, Date {current_calendar_date}")
+                logger.info(f"  Current day full: High={current_day_full_high}, Low={current_day_full_low}")
+                logger.info(f"  Prev day ({prev_calendar_day}) 4:00–9:25: High={prev_day_partial_high}, Low={prev_day_partial_low}")
+                logger.info(f"  Partial model: {partial_model}")
             partial_model_data.append({
-                'date': current_day_start.date(),
+                'date': current_calendar_date,
                 'week_start': week_start,
                 'trading_day': day_num,
                 'partial_model': partial_model
             })
-    
     return pd.DataFrame(partial_model_data)
 
 def main():
